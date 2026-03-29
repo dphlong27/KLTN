@@ -25,6 +25,7 @@ class CapNhatCongTyRequest extends FormRequest
             'logo' => ['nullable', 'file', 'image', 'max:2048'],
             'nganh_nghe_id' => ['nullable', 'integer', 'exists:nganh_nghes,id'],
             'quy_mo' => ['nullable', 'string', 'in:' . implode(',', CongTy::QUY_MO_LIST)],
+            'trang_thai' => ['sometimes', 'integer', 'in:0,1'],
         ];
     }
 
@@ -36,6 +37,7 @@ class CapNhatCongTyRequest extends FormRequest
             'email.email' => 'Email không đúng định dạng.',
             'nganh_nghe_id.exists' => 'Ngành nghề không tồn tại.',
             'quy_mo.in' => 'Quy mô không hợp lệ (1-10, 11-50, 51-200, 201-500, 500+).',
+            'trang_thai.in' => 'Trạng thái chỉ chấp nhận 0 hoặc 1.',
         ];
     }
 }
