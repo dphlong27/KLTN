@@ -1,350 +1,402 @@
 ﻿<script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
-import { publicCatalogService } from '@/services/api'
-import { API_DOMAIN } from '@/config/api'
+import { useNotify } from '@/composables/useNotify'
+import { jobService } from '@/services/api'
 
 const router = useRouter()
-const loading = ref(true)
-const error = ref('')
-const jobs = ref([])
-const companies = ref([])
-const industries = ref([])
-const searchForm = reactive({
-  keyword: '',
-  location: ''
-})
+const notify = useNotify()
 
-const unwrap = (payload) => payload?.data ?? payload ?? []
-const asArray = (payload) => {
-  const data = unwrap(payload)
-  if (Array.isArray(data?.data)) return data.data
-  if (Array.isArray(data)) return data
+const searchMode = ref('quick')
+const quickQuery = ref('')
+const quickIndustryId = ref('')
+const quickLocation = ref('')
+const semanticQuery = ref('')
+
+const featuredJobs = ref([])
+const featuredIndustries = ref([])
+const allIndustries = ref([])
+const featuredSkills = ref([])
+const featuredCompanies = ref([])
+const loadingLanding = ref(false)
+
+const placeholderText = computed(() =>
+  searchMode.value === 'semantic'
+    ? 'Ví dụ: backend Laravel remote, ưu tiên REST API và MySQL'
+    : 'Kỹ năng, ngành nghề hoặc địa điểm...',
+)
+
+const scoreFeaturedJob = (job) => {
+  const hasSalary = Number(job?.muc_luong || 0) || (Number(job?.muc_luong_tu || 0) && Number(job?.muc_luong_den || 0)) ? 1 : 0
+  const views = Number(job?.luot_xem || 0)
+  const createdAt = job?.created_at ? new Date(job.created_at).getTime() : 0
+  return (hasSalary * 2000000000000) + (views * 1000000) + createdAt
+}
+
+const sortedFeaturedJobs = computed(() =>
+  [...featuredJobs.value]
+    .sort((a, b) => scoreFeaturedJob(b) - scoreFeaturedJob(a))
+    .slice(0, 3),
+)
+
+const extractList = (response) => {
+  const payload = response?.data
+  if (Array.isArray(payload?.data)) return payload.data
+  if (Array.isArray(payload)) return payload
   return []
 }
 
-const featuredJobs = computed(() => [...jobs.value].sort((a, b) => Number(b.luot_xem || 0) - Number(a.luot_xem || 0)).slice(0, 3))
-const latestJobs = computed(() => [...jobs.value].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 6))
-const highlightedCompanies = computed(() => companies.value.slice(0, 4))
-const highlightedIndustries = computed(() => industries.value.slice(0, 8))
-const totalOpenJobs = computed(() => jobs.value.length)
-const totalCompanies = computed(() => companies.value.length)
+const formatSalary = (job) => {
+  const salaryFrom = Number(job?.muc_luong_tu || 0)
+  const salaryTo = Number(job?.muc_luong_den || 0)
+  const salary = Number(job?.muc_luong || 0)
 
-const normalizeIndustries = (job) => job.nganh_nghes || job.chi_tiet_nganh_nghes || []
-const getCompany = (job) => job.cong_ty || job.company || {}
+  if (salaryFrom && salaryTo) {
+    return `${salaryFrom.toLocaleString('vi-VN')} - ${salaryTo.toLocaleString('vi-VN')} đ`
+  }
 
-const companyLogoUrl = (company) => {
-  const path = company?.logo
-  if (!path) return ''
-  if (String(path).startsWith('http')) return path
-  return `${API_DOMAIN}${String(path).startsWith('/') ? path : `/storage/${path}`}`
+  if (salary) {
+    return `${salary.toLocaleString('vi-VN')} đ`
+  }
+
+  return 'Thỏa thuận'
 }
 
-const formatCurrency = (value) => {
-  if (value === null || value === undefined || value === '') return 'Thoa thuan'
-  const amount = Number(value)
-  if (Number.isNaN(amount)) return String(value)
-  return new Intl.NumberFormat('vi-VN', {
-    style: 'currency',
-    currency: 'VND',
-    maximumFractionDigits: 0
-  }).format(amount)
-}
+const getCompanyName = (job) =>
+  job?.cong_ty?.ten_cong_ty || job?.ten_cong_ty || 'Doanh nghiệp đang cập nhật'
 
-const formatCompactCurrency = (value) => {
-  if (value === null || value === undefined || value === '') return 'Linh hoat'
-  const amount = Number(value)
-  if (Number.isNaN(amount)) return String(value)
-  return new Intl.NumberFormat('vi-VN', {
-    notation: 'compact',
-    maximumFractionDigits: 1
-  }).format(amount)
-}
+const getLocationText = (job) => job?.dia_diem_lam_viec || 'Linh hoạt'
 
-const formatDate = (value) => {
-  if (!value) return 'Dang mo don'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return 'Dang mo don'
-  return new Intl.DateTimeFormat('vi-VN').format(date)
-}
+const getTagList = (job) => {
+  const industries = Array.isArray(job?.nganh_nghes)
+    ? job.nganh_nghes.map((item) => item?.ten_nganh || item?.ten_nganh_nghe).filter(Boolean)
+    : []
 
-const submitSearch = () => {
-  router.push({
-    path: '/jobs',
-    query: {
-      search: searchForm.keyword || undefined,
-      dia_diem: searchForm.location || undefined
-    }
-  })
+  const skills = Array.isArray(job?.ky_nangs)
+    ? job.ky_nangs.map((item) => item?.ten_ky_nang || item?.ten).filter(Boolean)
+    : []
+
+  return [...new Set([...industries, ...skills])].slice(0, 3)
 }
 
 const loadLandingData = async () => {
-  loading.value = true
-  error.value = ''
+  loadingLanding.value = true
 
   try {
-    const [jobsResponse, companiesResponse, industriesResponse] = await Promise.all([
-      publicCatalogService.getJobs({ per_page: 24 }),
-      publicCatalogService.getCompanies({ per_page: 12 }),
-      publicCatalogService.getIndustries()
+    const [jobsResponse, industriesResponse, allIndustriesResponse, skillsResponse, companiesResponse] = await Promise.all([
+      jobService.getJobs({ per_page: 8 }),
+      jobService.getIndustries({ per_page: 6 }),
+      jobService.getIndustries({ per_page: 0 }),
+      jobService.getSkills({ per_page: 8 }),
+      jobService.getCompanies({ per_page: 4 }),
     ])
 
-    jobs.value = asArray(jobsResponse)
-    companies.value = asArray(companiesResponse)
-    industries.value = asArray(industriesResponse)
-  } catch (err) {
-    error.value = err.message || 'Khong the tai du lieu trang chu'
+    featuredJobs.value = extractList(jobsResponse)
+    featuredIndustries.value = extractList(industriesResponse)
+    allIndustries.value = extractList(allIndustriesResponse)
+    featuredSkills.value = extractList(skillsResponse)
+    featuredCompanies.value = extractList(companiesResponse)
+  } catch (error) {
+    notify.apiError(error, 'Không thể tải dữ liệu trang chủ.')
   } finally {
-    loading.value = false
+    loadingLanding.value = false
   }
 }
 
-onMounted(loadLandingData)
+const handleHeroSearch = () => {
+  const keyword = quickQuery.value.trim()
+  const location = quickLocation.value.trim()
+  const semanticValue = semanticQuery.value.trim()
+
+  if (searchMode.value === 'semantic' && !semanticValue) {
+    notify.warning('Hãy nhập mô tả công việc bạn muốn tìm bằng AI.')
+    return
+  }
+
+  if (searchMode.value === 'quick' && !keyword && !quickIndustryId.value && !location) {
+    notify.warning('Hãy nhập từ khóa hoặc chọn thêm ngành nghề, địa điểm để tìm việc.')
+    return
+  }
+
+  router.push({
+    path: '/jobs',
+    query: searchMode.value === 'semantic'
+      ? { semantic_q: semanticValue }
+      : {
+        ...(keyword ? { search: keyword } : {}),
+        ...(quickIndustryId.value ? { nganh_nghe_id: quickIndustryId.value } : {}),
+        ...(location ? { dia_diem: location } : {}),
+      },
+  })
+}
+
+onMounted(() => {
+  loadLandingData()
+})
 </script>
 
 <template>
-  <div class="bg-[radial-gradient(circle_at_top_left,_rgba(36,99,235,0.14),_transparent_26%),radial-gradient(circle_at_80%_20%,_rgba(14,165,233,0.14),_transparent_24%),linear-gradient(180deg,_#f8fbff_0%,_#ffffff_42%,_#f8fafc_100%)] dark:bg-slate-950">
-    <section class="relative overflow-hidden border-b border-slate-200/70 py-16 dark:border-slate-800 lg:py-24">
-      <div class="mx-auto grid max-w-7xl items-center gap-12 px-6 lg:grid-cols-[1.15fr,0.85fr]">
-        <div class="relative z-10">
-          <div class="inline-flex items-center gap-2 rounded-full border border-[#2463eb]/15 bg-white/80 px-4 py-2 text-sm font-semibold text-[#2463eb] shadow-sm backdrop-blur">
-            <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
-            Nền tảng kết nối dữ liệu tuyển dụng thực tế và công nghệ AI thông minh
-          </div>
-          <h1 class="mt-6 max-w-4xl text-4xl font-black tracking-tight text-slate-900 sm:text-5xl lg:text-6xl">
-            Tìm việc làm, chọn đúng người với <span class="text-[#2463eb]">dữ liệu thật</span> và gợi ý thông minh
-          </h1>
-          <p class="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-            Từ hồ sơ ứng viên, tin tuyển dụng, công ty, kỹ năng đến AI matching, mỗi thành phần trong hệ thống của bạn đều có thể trở thành trải nghiệm tìm việc và tuyển dụng mãnh liệt, đẹp và dễ dùng hơn.
-          </p>
+  <section class="relative overflow-hidden py-16 lg:py-24">
+    <div class="mx-auto max-w-7xl px-6">
+      <div class="relative z-10 flex flex-col items-center text-center">
+        <span
+          class="mb-4 inline-flex items-center gap-2 rounded-full bg-[#2463eb]/10 px-4 py-1.5 text-sm font-semibold text-[#2463eb]">
+          <span class="material-symbols-outlined text-sm">auto_awesome</span>
+          Ứng dụng Trí tuệ Nhân tạo thế hệ mới
+        </span>
+        <h1 class="max-w-4xl text-4xl font-black tracking-tight text-slate-900 dark:text-white sm:text-6xl">
+          Tìm công việc phù hợp với <span class="text-[#2463eb]">AI Matching</span>
+        </h1>
+        <p class="mt-6 max-w-2xl text-lg text-slate-600 dark:text-slate-400">
+          Hệ thống phân tích CV và mô tả công việc để đưa ra mức độ phù hợp, gợi ý lộ trình phát triển và kết nối bạn
+          với nhà tuyển dụng hàng đầu.
+        </p>
 
-          <div class="mt-8 grid gap-3 rounded-3xl border border-slate-200 bg-white/90 p-3 shadow-2xl shadow-slate-200/60 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 md:grid-cols-[1.4fr,1fr,auto]">
-            <input v-model="searchForm.keyword" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-700 dark:bg-slate-800 dark:text-white" type="text" placeholder="Vị trí, công ty, kỹ năng" />
-            <input v-model="searchForm.location" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-700 dark:bg-slate-800 dark:text-white" type="text" placeholder="Địa điểm làm việc" />
-            <button class="rounded-2xl bg-[#2463eb] px-6 py-4 text-sm font-bold text-white transition hover:bg-[#1d4fcc]" @click="submitSearch">
-              Tìm kiếm
+        <div
+          class="mt-10 w-full max-w-5xl rounded-[28px] bg-white/95 p-3 shadow-2xl ring-1 ring-slate-200 backdrop-blur dark:bg-slate-900/95 dark:ring-slate-800">
+          <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-2 pb-3 dark:border-slate-800">
+            <button type="button"
+              class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all" :class="searchMode === 'quick'
+                ? 'bg-[#2463eb] text-white shadow-lg shadow-blue-200/60'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'"
+              @click="searchMode = 'quick'">
+              <span class="material-symbols-outlined text-base">search</span>
+              Tìm nhanh
+            </button>
+
+            <button type="button"
+              class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-bold transition-all" :class="searchMode === 'semantic'
+                ? 'bg-[#2463eb] text-white shadow-lg shadow-blue-200/60'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300'"
+              @click="searchMode = 'semantic'">
+              <span class="material-symbols-outlined text-base">auto_awesome</span>
+              Semantic Search
             </button>
           </div>
 
-          <div class="mt-6 flex flex-wrap gap-3">
-            <RouterLink to="/jobs" class="rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 dark:bg-white dark:text-slate-900">
-              Xem tất cả việc làm
-            </RouterLink>
-            <RouterLink to="/auth" class="rounded-xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-white dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-900">
-              Tạo tài khoản ngay
-            </RouterLink>
+          <div class="mt-3 flex flex-col gap-3 xl:flex-row xl:items-center">
+            <template v-if="searchMode === 'quick'">
+              <div class="flex min-w-0 flex-1 items-center rounded-2xl bg-slate-50 px-4 dark:bg-slate-950">
+                <span class="material-symbols-outlined text-slate-400">search</span>
+                <input v-model="quickQuery"
+                  class="w-full border-none bg-transparent py-4 text-slate-900 shadow-none outline-none ring-0 placeholder:text-slate-400 focus:border-transparent focus:outline-none focus:ring-0 focus:ring-offset-0 dark:text-white"
+                  :placeholder="placeholderText" type="text" @keyup.enter="handleHeroSearch" />
+              </div>
+            </template>
+            <button type="button"
+              class="flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#2463eb] px-8 font-bold text-white transition-all hover:bg-blue-700"
+              @click="handleHeroSearch">
+              <span class="material-symbols-outlined text-base">{{ searchMode === 'semantic' ? 'auto_awesome' : 'search'
+                }}</span>
+              {{ searchMode === 'semantic' ? 'Tìm bằng AI' : 'Tìm kiếm' }}
+            </button>
           </div>
 
-          <div class="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div class="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
-              <p class="text-sm text-slate-500">Tin đăng mở</p>
-              <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ totalOpenJobs }}</p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
-              <p class="text-sm text-slate-500">Doanh nghiệp</p>
-              <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ totalCompanies }}</p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 bg-white/90 p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/80">
-              <p class="text-sm text-slate-500">Ngành nghề</p>
-              <p class="mt-2 text-3xl font-black text-slate-900 dark:text-white">{{ industries.length }}</p>
-            </div>
+          <div class="mt-3 flex flex-wrap items-center gap-2 px-2 text-left">
+            <span class="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+              {{ searchMode === 'semantic' ? 'Mô tả tự nhiên, AI tự hiểu ý bạn' : 'Tìm nhanh theo từ khóa, ngành nghề và địa điểm'
+              }}
+            </span>
+
+            <span v-if="searchMode === 'quick'"
+              class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              Có thể kết hợp nhiều trường trong một lần tìm
+            </span>
+
+            <span v-if="searchMode === 'semantic'"
+              class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              Ví dụ: backend Laravel, Docker, Đà Nẵng hoặc remote
+            </span>
           </div>
         </div>
 
-        <div class="relative">
-          <div class="absolute -left-8 top-8 h-28 w-28 rounded-full bg-sky-200/60 blur-3xl"></div>
-          <div class="absolute -right-8 bottom-8 h-32 w-32 rounded-full bg-blue-300/50 blur-3xl"></div>
-          <div class="relative rounded-[32px] border border-slate-200 bg-white/90 p-5 shadow-2xl shadow-slate-300/40 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
-            <div class="rounded-[28px] bg-slate-950 p-6 text-white">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-xs uppercase tracking-[0.24em] text-sky-200">AI Recruitment Snapshot</p>
-                  <h2 class="mt-2 text-2xl font-bold">Thị trường đang cần gì?</h2>
-                </div>
-                <span class="material-symbols-outlined text-4xl text-sky-300">insights</span>
-              </div>
-              <div class="mt-6 grid gap-3 sm:grid-cols-2">
-                <div class="rounded-2xl bg-white/10 p-4">
-                  <p class="text-xs uppercase tracking-widest text-slate-300">Mức lương nổi bật</p>
-                  <p class="mt-2 text-2xl font-black">{{ featuredJobs[0] ? formatCompactCurrency(featuredJobs[0].muc_luong) : '30Tr+' }}</p>
-                </div>
-                <div class="rounded-2xl bg-white/10 p-4">
-                  <p class="text-xs uppercase tracking-widest text-slate-300">Công ty nổi bật</p>
-                  <p class="mt-2 text-lg font-bold">{{ highlightedCompanies[0]?.ten_cong_ty || 'TechViet Solutions' }}</p>
-                </div>
-              </div>
+        <div v-if="featuredIndustries.length || featuredSkills.length"
+          class="mt-6 flex max-w-5xl flex-wrap items-center justify-center gap-3">
+          <RouterLink v-for="industry in featuredIndustries" :key="`industry-${industry.id}`"
+            :to="`/industries/${industry.id}`"
+            class="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+            {{ industry.ten_nganh || industry.ten_nganh_nghe }}
+          </RouterLink>
+
+          <RouterLink v-for="skill in featuredSkills.slice(0, 4)" :key="`skill-${skill.id}`" :to="`/skills/${skill.id}`"
+            class="rounded-full bg-slate-900/5 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-[#2463eb]/10 hover:text-[#2463eb] dark:bg-white/5 dark:text-slate-300">
+            {{ skill.ten_ky_nang || skill.ten }}
+          </RouterLink>
+        </div>
+
+        <div class="mt-8 flex flex-wrap justify-center gap-4">
+          <RouterLink to="/my-cv"
+            class="flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-[#2463eb] bg-[#2463eb] px-8 font-bold text-white transition-all hover:bg-blue-700">
+            <span class="material-symbols-outlined">upload_file</span>
+            Tải CV của bạn
+          </RouterLink>
+
+          <RouterLink to="/jobs"
+            class="flex h-12 items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-transparent px-8 font-bold text-slate-900 transition-all hover:bg-slate-100 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800">
+            Tìm việc ngay
+          </RouterLink>
+        </div>
+      </div>
+    </div>
+
+    <div class="absolute -top-24 -left-24 h-96 w-96 rounded-full bg-[#2463eb]/5 blur-[100px]"></div>
+    <div class="absolute top-1/2 -right-24 h-64 w-64 rounded-full bg-[#2463eb]/10 blur-[80px]"></div>
+  </section>
+  <section class="bg-white py-20 dark:bg-slate-900/50">
+    <div class="mx-auto max-w-7xl px-6 text-center">
+      <h2 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">Tại sao chọn AI
+        Recruitment?</h2>
+      <p class="mt-4 text-slate-600 dark:text-slate-400">Công nghệ AI tiên tiến giúp tối ưu hóa quy trình tìm việc của
+        bạn
+      </p>
+
+      <div class="mt-16 grid grid-cols-1 gap-8 md:grid-cols-3">
+        <div
+          class="flex flex-col items-center rounded-2xl border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-blue-100 text-[#2463eb]">
+            <span class="material-symbols-outlined text-3xl">analytics</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">AI Matching Score</h3>
+          <p class="mt-3 text-center text-slate-600 dark:text-slate-400">Đánh giá độ tương thích giữa CV và Job
+            Description theo thời gian thực với độ chính xác cao.</p>
+        </div>
+        <div
+          class="flex flex-col items-center rounded-2xl border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-purple-100 text-purple-600">
+            <span class="material-symbols-outlined text-3xl">psychology</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">Phân tích khoảng trống kỹ năng</h3>
+          <p class="mt-3 text-center text-slate-600 dark:text-slate-400">Phân tích những kỹ năng còn thiếu và gợi ý các
+            khóa học để bạn sẵn sàng cho công việc mơ ước.</p>
+        </div>
+        <div
+          class="flex flex-col items-center rounded-2xl border border-slate-100 bg-white p-8 shadow-sm transition-all hover:shadow-md dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-6 flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+            <span class="material-symbols-outlined text-3xl">explore</span>
+          </div>
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">Gợi ý hướng nghiệp</h3>
+          <p class="mt-3 text-center text-slate-600 dark:text-slate-400">Định hướng nghề nghiệp dựa trên năng lực và xu
+            hướng thị trường lao động toàn cầu.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="py-20">
+    <div class="mx-auto max-w-7xl px-6">
+      <div class="mb-12 flex items-center justify-between">
+        <div>
+          <h2 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Việc làm nổi bật</h2>
+          <p class="mt-2 text-slate-600 dark:text-slate-400">Những cơ hội nghề nghiệp tốt nhất đang mở cho bạn ngay lúc
+            này.</p>
+        </div>
+        <RouterLink to="/jobs" class="hidden items-center gap-2 font-bold text-[#2463eb] hover:underline sm:flex">
+          Xem tất cả <span class="material-symbols-outlined">arrow_forward</span>
+        </RouterLink>
+      </div>
+
+      <div v-if="loadingLanding" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="index in 3" :key="index"
+          class="h-80 animate-pulse rounded-2xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        </div>
+      </div>
+
+      <div v-else-if="sortedFeaturedJobs.length" class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="job in sortedFeaturedJobs" :key="job.id"
+          class="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:border-[#2463eb]/50 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex items-start justify-between gap-4">
+            <div
+              class="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-lg font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+              {{ getCompanyName(job).slice(0, 1) }}
+            </div>
+            <span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-[#2463eb]">
+              {{ job.hinh_thuc_lam_viec || 'Cơ hội mới' }}
+            </span>
+          </div>
+
+          <div class="mt-6">
+            <h3 class="text-lg font-bold text-slate-900 transition-colors group-hover:text-[#2463eb] dark:text-white">
+              {{ job.tieu_de }}
+            </h3>
+            <p class="text-sm font-medium text-slate-500">
+              {{ getCompanyName(job) }} • {{ getLocationText(job) }}
+            </p>
+          </div>
+
+          <p class="mt-4 line-clamp-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
+            {{ job.mo_ta_cong_viec || 'Mô tả công việc đang được cập nhật.' }}
+          </p>
+
+          <div class="mt-4 flex flex-wrap gap-2">
+            <span v-for="tag in getTagList(job)" :key="tag"
+              class="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+              {{ tag }}
+            </span>
+          </div>
+
+          <div class="mt-6 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
+            <span class="text-lg font-bold text-[#2463eb]">{{ formatSalary(job) }}</span>
+            <RouterLink :to="`/jobs/${job.id}`"
+              class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white">
+              Xem chi tiết
+            </RouterLink>
+          </div>
+        </div>
+      </div>
+
+      <div v-else class="rounded-2xl border border-dashed border-slate-300 p-10 text-center dark:border-slate-700">
+        <p class="text-slate-600 dark:text-slate-400">Chưa có tin tuyển dụng nổi bật để hiển thị.</p>
+      </div>
+    </div>
+  </section>
+
+  <section v-if="featuredCompanies.length" class="bg-white/60 py-20 dark:bg-slate-900/40">
+    <div class="mx-auto max-w-7xl px-6">
+      <div class="mb-10">
+        <h2 class="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Nhà tuyển dụng nổi bật</h2>
+        <p class="mt-2 text-slate-600 dark:text-slate-400">Khám phá những doanh nghiệp đang tuyển dụng và xây đội ngũ
+          mạnh
+          hơn mỗi ngày.</p>
+      </div>
+
+      <div class="mb-8 flex justify-end">
+        <RouterLink to="/companies"
+          class="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:text-slate-200">
+          Xem tất cả doanh nghiệp
+          <span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+        </RouterLink>
+      </div>
+
+      <div class="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+        <div v-for="company in featuredCompanies" :key="company.id"
+          class="rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-1 hover:border-[#2463eb]/40 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900">
+          <div class="flex items-center gap-4">
+            <img v-if="company.logo_url" :src="company.logo_url" :alt="company.ten_cong_ty"
+              class="h-14 w-14 rounded-xl object-cover ring-1 ring-slate-200 dark:ring-slate-700" />
+            <div v-else
+              class="flex h-14 w-14 items-center justify-center rounded-xl bg-[#2463eb]/10 text-lg font-black text-[#2463eb]">
+              {{ company.ten_cong_ty?.slice(0, 1) }}
             </div>
 
-            <div class="mt-4 space-y-3">
-              <div v-for="job in featuredJobs" :key="job.id" class="rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-[#2463eb]/40 dark:border-slate-800 dark:bg-slate-900">
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <p class="text-sm font-bold text-slate-900 dark:text-white">{{ job.tieu_de }}</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ getCompany(job).ten_cong_ty || 'Công ty đang cập nhật' }}</p>
-                  </div>
-                  <span class="rounded-full bg-[#2463eb]/10 px-2.5 py-1 text-xs font-semibold text-[#2463eb]">{{ job.hinh_thuc_lam_viec || 'Đang mở' }}</span>
-                </div>
-                <div class="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                  <span class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{{ job.dia_diem_lam_viec || 'Địa điểm đang cập nhật' }}</span>
-                  <span class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{{ formatCurrency(job.muc_luong) }}</span>
-                </div>
-              </div>
-              <p v-if="!featuredJobs.length" class="rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700">
-                Đang tải dữ liệu việc làm nổi bật...
+            <div class="min-w-0">
+              <h3 class="truncate text-base font-bold text-slate-900 dark:text-white">{{ company.ten_cong_ty }}</h3>
+              <p class="truncate text-sm text-slate-500">
+                {{ company.quy_mo || 'Doanh nghiệp công nghệ' }} • {{ company.so_tin_dang_hoat_dong || 0 }} tin đang mở
               </p>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
 
-    <section class="py-20">
-      <div class="mx-auto max-w-7xl px-6">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.22em] text-[#2463eb]">Năng lực của hệ thống</p>
-            <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">Trang chủ phản ánh dung hệ dữ liệu bạn đang có</h2>
-          </div>
-          <RouterLink to="/ai-career" class="text-sm font-semibold text-[#2463eb] hover:underline">Khám phá AI career advisor</RouterLink>
-        </div>
+          <p class="mt-4 line-clamp-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
+            {{ company.mo_ta || 'Doanh nghiệp đang mở rộng đội ngũ và tìm kiếm ứng viên phù hợp.' }}
+          </p>
 
-        <div class="mt-10 grid gap-6 md:grid-cols-3">
-          <div class="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#2463eb]/10 text-[#2463eb]">
-              <span class="material-symbols-outlined text-3xl">auto_awesome</span>
-            </div>
-            <h3 class="mt-6 text-xl font-bold text-slate-900 dark:text-white">AI Matching</h3>
-            <p class="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">Hỗ trợ so khớp CV và vị trí, giúp ứng viên nhìn rõ độ phù hợp, doanh nghiệp dễ ưu tiên hồ sơ tốt hơn.</p>
-          </div>
-          <div class="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-100 text-sky-600">
-              <span class="material-symbols-outlined text-3xl">apartment</span>
-            </div>
-            <h3 class="mt-6 text-xl font-bold text-slate-900 dark:text-white">Hệ thống doanh nghiệp</h3>
-            <p class="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">Từ thông tin công ty, tin tuyển dụng đến ứng viên ứng tuyển, mỗi lượng dữ liệu đều có thể hiển thị rõ ràng và nhất quán.</p>
-          </div>
-          <div class="rounded-3xl border border-slate-200 bg-white p-7 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600">
-              <span class="material-symbols-outlined text-3xl">category</span>
-            </div>
-            <h3 class="mt-6 text-xl font-bold text-slate-900 dark:text-white">Ngành nghề và kỹ năng</h3>
-            <p class="mt-3 text-sm leading-7 text-slate-600 dark:text-slate-300">Danh mục ngành nghề, công ty và các job mở giúp trang chủ không chỉ đẹp mà còn có giá trị thông tin thực.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="border-y border-slate-200/80 bg-white/80 py-20 backdrop-blur dark:border-slate-800 dark:bg-slate-950/70">
-      <div class="mx-auto max-w-7xl px-6">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.22em] text-[#2463eb]">Ngành nghề nổi bật</p>
-            <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">Khám phá nhu cầu từ các nhóm ngành đang mở rộng</h2>
-          </div>
-          <RouterLink to="/jobs" class="text-sm font-semibold text-[#2463eb] hover:underline">Xem tất cả việc làm</RouterLink>
-        </div>
-
-        <div class="mt-10 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <RouterLink v-for="industry in highlightedIndustries" :key="industry.id" :to="{ path: '/jobs', query: { nganh_nghe_id: industry.id } }" class="group rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:border-[#2463eb]/35 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900">
-            <div class="flex items-center justify-between">
-              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#2463eb]/10 text-[#2463eb]">
-                <span class="material-symbols-outlined text-2xl">workspaces</span>
-              </div>
-              <span class="material-symbols-outlined text-slate-300 transition group-hover:text-[#2463eb]">arrow_forward</span>
-            </div>
-            <h3 class="mt-6 text-lg font-bold text-slate-900 dark:text-white">{{ industry.ten_nganh }}</h3>
-            <p class="mt-2 text-sm text-slate-500">Danh mục công việc, công ty và xu hướng tuyển dụng đang được hệ thống ghi nhận.</p>
+          <RouterLink :to="`/companies/${company.id}`"
+            class="mt-5 inline-flex text-sm font-bold text-[#2463eb] hover:underline">
+            Xem doanh nghiệp
           </RouterLink>
-          <div v-if="!highlightedIndustries.length" class="rounded-3xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500 dark:border-slate-700 sm:col-span-2 xl:col-span-4">
-            Đang tải danh mục ngành nghề...
-          </div>
         </div>
       </div>
-    </section>
+    </div>
+  </section>
 
-    <section class="py-20">
-      <div class="mx-auto max-w-7xl px-6">
-        <div class="grid gap-12 lg:grid-cols-[0.9fr,1.1fr]">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.22em] text-[#2463eb]">Doanh nghiệp nổi bật</p>
-            <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">Những đơn vị đang xây dựng đội ngũ trong hệ thống của bạn</h2>
-            <p class="mt-4 text-sm leading-7 text-slate-600 dark:text-slate-300">Phần này giúp trang chủ liên kết được dữ liệu công ty, thông tin doanh nghiệp và tin tuyển dụng đang mở một cách thuyết phục hơn.</p>
-          </div>
-          <div class="grid gap-4 md:grid-cols-2">
-            <article v-for="company in highlightedCompanies" :key="company.id" class="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-              <div class="flex items-start gap-4">
-                <div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 dark:bg-slate-800">
-                  <img v-if="companyLogoUrl(company)" :src="companyLogoUrl(company)" alt="Company logo" class="h-full w-full object-cover" />
-                  <span v-else class="material-symbols-outlined text-2xl text-slate-400">domain</span>
-                </div>
-                <div class="min-w-0">
-                  <h3 class="text-lg font-bold text-slate-900 dark:text-white">{{ company.ten_cong_ty }}</h3>
-                  <p class="mt-1 text-sm text-slate-500">{{ company.dia_chi || 'Đang cập nhật địa chỉ' }}</p>
-                </div>
-              </div>
-              <p class="mt-4 line-clamp-3 text-sm leading-7 text-slate-600 dark:text-slate-300">{{ company.mo_ta || 'Doanh nghiep dang mo rong doi ngu va xay dung thuong hieu tuyen dung tren nen tang.' }}</p>
-            </article>
-            <div v-if="!highlightedCompanies.length" class="rounded-3xl border border-dashed border-slate-300 px-4 py-10 text-center text-sm text-slate-500 dark:border-slate-700 md:col-span-2">
-              Đang tải danh sách doanh nghiệp nổi bật...
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="pb-20">
-      <div class="mx-auto max-w-7xl px-6">
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p class="text-sm font-semibold uppercase tracking-[0.22em] text-[#2463eb]">Tin tuyển dụng mới nhất</p>
-            <h2 class="mt-2 text-3xl font-black tracking-tight text-slate-900 dark:text-white">Dữ liệu việc làm được đưa thẳng lên trang chủ</h2>
-          </div>
-          <RouterLink to="/jobs" class="text-sm font-semibold text-[#2463eb] hover:underline">Mở trang tìm việc</RouterLink>
-        </div>
-
-        <div v-if="error" class="mt-8 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-300">
-          {{ error }}
-        </div>
-
-        <div class="mt-10 grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-          <article v-for="job in latestJobs" :key="job.id" class="group rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-[#2463eb]/40 hover:shadow-xl dark:border-slate-800 dark:bg-slate-900">
-            <div class="flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-[#2463eb]">{{ job.hinh_thuc_lam_viec || 'Đang mở' }}</p>
-                <RouterLink :to="`/jobs/${job.id}`" class="mt-3 block text-xl font-bold leading-snug text-slate-900 transition group-hover:text-[#2463eb] dark:text-white">
-                  {{ job.tieu_de }}
-                </RouterLink>
-                <p class="mt-2 text-sm text-slate-500">{{ getCompany(job).ten_cong_ty || 'Công ty đang cập nhật' }}</p>
-              </div>
-              <span class="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-500 dark:bg-slate-800">{{ formatDate(job.ngay_het_han) }}</span>
-            </div>
-
-            <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
-              <span class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{{ job.dia_diem_lam_viec || 'Địa điểm đang cập nhật' }}</span>
-              <span class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{{ formatCurrency(job.muc_luong) }}</span>
-              <span class="rounded-full bg-slate-100 px-2.5 py-1 dark:bg-slate-800">{{ job.kinh_nghiem_yeu_cau || 'Kinh nghiệm linh hoạt' }}</span>
-            </div>
-
-            <div class="mt-4 flex flex-wrap gap-2">
-              <span v-for="industry in normalizeIndustries(job).slice(0, 3)" :key="industry.id || industry.nganh_nghe_id" class="rounded-full bg-[#2463eb]/10 px-2.5 py-1 text-xs font-medium text-[#2463eb]">
-                {{ industry.ten_nganh || industry.nganh_nghe?.ten_nganh || 'Ngành nghề' }}
-              </span>
-            </div>
-
-            <p class="mt-4 line-clamp-3 text-sm leading-7 text-slate-600 dark:text-slate-300">{{ job.mo_ta_cong_viec || 'Mô tả công việc đang được cập nhật.' }}</p>
-
-            <div class="mt-6 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
-              <span class="text-sm font-semibold text-slate-500">{{ Number(job.luot_xem || 0) }} lượt xem</span>
-              <RouterLink :to="`/jobs/${job.id}`" class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:text-white">
-                Xem chi tiết
-              </RouterLink>
-            </div>
-          </article>
-          <div v-if="loading && !latestJobs.length" class="rounded-3xl border border-dashed border-slate-300 px-4 py-14 text-center text-sm text-slate-500 dark:border-slate-700 lg:col-span-2 xl:col-span-3">
-            Đang tải tin tuyển dụng mới nhất...
-          </div>
-        </div>
-      </div>
-    </section>
-  </div>
 </template>

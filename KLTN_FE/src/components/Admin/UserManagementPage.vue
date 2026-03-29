@@ -1,6 +1,9 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { userService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
 
 // State
 const users = ref([])
@@ -33,11 +36,13 @@ const deletingUser = ref(null)
 const formData = reactive({
   ho_ten: '',
   email: '',
+  mat_khau: '',
   so_dien_thoai: '',
   ngay_sinh: '',
   gioi_tinh: '',
   dia_chi: '',
-  vai_tro: 0
+  vai_tro: 0,
+  trang_thai: 1,
 })
 
 // Map vai_tro to display text
@@ -53,12 +58,18 @@ const roleColors = {
   2: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
 }
 
-// Calculate stats from users data
-const calculateStats = () => {
-  stats.total = users.value.length
-  stats.jobSeekers = users.value.filter(u => u.vai_tro === 0).length
-  stats.employers = users.value.filter(u => u.vai_tro === 1).length
-  stats.pendingApprovals = users.value.filter(u => u.trang_thai === 0).length
+const loadStats = async () => {
+  try {
+    const response = await userService.getUserStats()
+    const payload = response?.data || {}
+
+    stats.total = payload.tong || 0
+    stats.jobSeekers = payload.ung_vien || 0
+    stats.employers = payload.nha_tuyen_dung || 0
+    stats.pendingApprovals = payload.bi_khoa || 0
+  } catch (err) {
+    console.error('Không thể tải thống kê người dùng', err)
+  }
 }
 
 // Load users
@@ -98,7 +109,6 @@ const loadUsers = async () => {
 
     users.value = users_list
     totalUsers.value = total
-    calculateStats()
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách người dùng'
   } finally {
@@ -106,42 +116,45 @@ const loadUsers = async () => {
   }
 }
 
-// Open modal for new user
-const openNewUserModal = () => {
-  editingUser.value = null
-  formData.ho_ten = ''
-  formData.email = ''
-  formData.so_dien_thoai = ''
-  formData.ngay_sinh = ''
-  formData.gioi_tinh = ''
-  formData.dia_chi = ''
-  formData.vai_tro = 0
-  showModal.value = true
-}
-
 // Open modal for editing user
 const openEditUserModal = (user) => {
   editingUser.value = user.id
   formData.ho_ten = user.ho_ten
   formData.email = user.email
+  formData.mat_khau = ''
   formData.so_dien_thoai = user.so_dien_thoai || ''
   formData.ngay_sinh = user.ngay_sinh || ''
   formData.gioi_tinh = user.gioi_tinh || ''
   formData.dia_chi = user.dia_chi || ''
   formData.vai_tro = user.vai_tro
+  formData.trang_thai = user.trang_thai ?? 1
   showModal.value = true
 }
 
 // Submit form
 const submitForm = async () => {
   try {
+    const payload = {
+      ho_ten: formData.ho_ten,
+      email: formData.email,
+      so_dien_thoai: formData.so_dien_thoai || null,
+      ngay_sinh: formData.ngay_sinh || null,
+      gioi_tinh: formData.gioi_tinh || null,
+      dia_chi: formData.dia_chi || null,
+      vai_tro: formData.vai_tro,
+      trang_thai: formData.trang_thai,
+    }
+
     if (editingUser.value) {
-      await userService.updateUser(editingUser.value, formData)
-    } else {
-      await userService.createUser(formData)
+      if (formData.mat_khau) {
+        payload.mat_khau = formData.mat_khau
+      }
+      await userService.updateUser(editingUser.value, payload)
+      notify.success('Đã cập nhật người dùng')
     }
     showModal.value = false
     await loadUsers()
+    await loadStats()
   } catch (err) {
     error.value = err.message || 'Lỗi lưu người dùng'
   }
@@ -159,6 +172,8 @@ const deleteUser = async () => {
     await userService.deleteUser(deletingUser.value.id)
     showDeleteModal.value = false
     await loadUsers()
+    await loadStats()
+    notify.success('Đã xóa người dùng')
   } catch (err) {
     error.value = err.message || 'Lỗi xóa người dùng'
   }
@@ -169,6 +184,8 @@ const toggleLock = async (userId) => {
   try {
     await userService.toggleLock(userId)
     await loadUsers()
+    await loadStats()
+    notify.success('Đã cập nhật trạng thái tài khoản')
   } catch (err) {
     error.value = err.message || 'Lỗi khoá/mở khoá tài khoản'
   }
@@ -191,6 +208,7 @@ const onFilterChange = () => {
 // Lifecycle
 onMounted(() => {
   loadUsers()
+  loadStats()
 })
 </script>
 
@@ -279,12 +297,6 @@ onMounted(() => {
         <option value="inactive">Khóa</option>
       </select>
     </div>
-    <button 
-      @click="openNewUserModal"
-      class="px-4 py-2 bg-[#2463eb] text-white rounded-lg text-sm font-semibold hover:bg-[#2463eb]/90 flex items-center gap-2 transition-colors"
-    >
-      <span class="material-symbols-outlined">add</span> Tạo mới
-    </button>
   </div>
 
   <!-- User Table -->
@@ -414,7 +426,7 @@ onMounted(() => {
   <div v-if="showModal" class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
     <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-md w-full mx-4">
       <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-        <h3 class="text-lg font-semibold">{{ editingUser ? 'Chỉnh sửa người dùng' : 'Tạo người dùng mới' }}</h3>
+        <h3 class="text-lg font-semibold">Chỉnh sửa người dùng</h3>
         <button @click="showModal = false" class="text-slate-400 hover:text-slate-600">
           <span class="material-symbols-outlined">close</span>
         </button>
@@ -426,7 +438,18 @@ onMounted(() => {
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
-          <input v-model="formData.email" type="email" :required="!editingUser" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+          <input v-model="formData.email" type="email" required class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            Mật khẩu mới (không bắt buộc)
+          </label>
+          <input
+            v-model="formData.mat_khau"
+            type="password"
+            minlength="6"
+            class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none"
+          />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Điện thoại</label>
@@ -457,12 +480,19 @@ onMounted(() => {
             <option value="2">Admin</option>
           </select>
         </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Trạng thái</label>
+          <select v-model.number="formData.trang_thai" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none">
+            <option :value="1">Hoạt động</option>
+            <option :value="0">Khóa</option>
+          </select>
+        </div>
         <div class="flex gap-3 pt-4">
           <button type="button" @click="showModal = false" class="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
             Hủy
           </button>
           <button type="submit" class="flex-1 px-4 py-2 bg-[#2463eb] text-white rounded-lg hover:bg-[#2463eb]/90 transition-colors font-medium">
-            {{ editingUser ? 'Cập nhật' : 'Tạo' }}
+            Cập nhật
           </button>
         </div>
       </form>

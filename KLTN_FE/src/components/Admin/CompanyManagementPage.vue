@@ -1,6 +1,9 @@
 <script setup>
 import { ref, reactive, onMounted, computed } from 'vue'
 import { companyService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
 
 // State
 const companies = ref([])
@@ -18,8 +21,8 @@ const selectedStatus = ref('')
 const stats = reactive({
   total: 0,
   active: 0,
-  pending: 0,
-  rejected: 0
+  paused: 0,
+  scaleSummary: {}
 })
 
 // Modals
@@ -31,10 +34,14 @@ const deletingCompany = ref(null)
 // Form data
 const formData = reactive({
   ten_cong_ty: '',
+  ma_so_thue: '',
   dia_chi: '',
+  dien_thoai: '',
+  email: '',
   quy_mo: '',
   mo_ta: '',
-  website: ''
+  website: '',
+  trang_thai: 1,
 })
 
 // Quy mô options
@@ -43,28 +50,30 @@ const scaleOptions = [
   { value: '11-50', label: '11-50 nhân viên' },
   { value: '51-200', label: '51-200 nhân viên' },
   { value: '201-500', label: '201-500 nhân viên' },
-  { value: '501-1000', label: '501-1000 nhân viên' },
-  { value: '>1000', label: 'Trên 1000 nhân viên' }
+  { value: '500+', label: 'Trên 500 nhân viên' }
 ]
 
 const statusMap = {
-  pending: 'Đang duyệt',
-  approved: 'Đã duyệt',
-  rejected: 'Từ chối'
+  1: 'Hoạt động',
+  0: 'Tạm ngưng',
 }
 
 const statusColors = {
-  pending: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-  approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+  1: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  0: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
 }
 
-// Calculate stats from companies data
-const calculateStats = () => {
-  stats.total = companies.value.length
-  stats.active = companies.value.filter(c => c.trang_thai === 'approved').length
-  stats.pending = companies.value.filter(c => c.trang_thai === 'pending').length
-  stats.rejected = companies.value.filter(c => c.trang_thai === 'rejected').length
+const loadStats = async () => {
+  try {
+    const response = await companyService.getCompanyStats()
+    const payload = response?.data || {}
+    stats.total = payload.tong || 0
+    stats.active = payload.hoat_dong || 0
+    stats.paused = payload.tam_ngung || 0
+    stats.scaleSummary = payload.theo_quy_mo || {}
+  } catch (err) {
+    console.error('Không thể tải thống kê công ty', err)
+  }
 }
 
 // Load companies
@@ -105,7 +114,6 @@ const loadCompanies = async () => {
 
     companies.value = companies_list
     totalCompanies.value = total
-    calculateStats()
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách công ty'
   } finally {
@@ -113,38 +121,29 @@ const loadCompanies = async () => {
   }
 }
 
-// Open modal for new company
-const openNewCompanyModal = () => {
-  editingCompany.value = null
-  formData.ten_cong_ty = ''
-  formData.dia_chi = ''
-  formData.quy_mo = ''
-  formData.mo_ta = ''
-  formData.website = ''
-  showModal.value = true
-}
-
 // Open modal for editing company
 const openEditCompanyModal = (company) => {
   editingCompany.value = company.id
   formData.ten_cong_ty = company.ten_cong_ty
-  formData.dia_chi = company.dia_chi
-  formData.quy_mo = company.quy_mo
+  formData.ma_so_thue = company.ma_so_thue || ''
+  formData.dia_chi = company.dia_chi || ''
+  formData.dien_thoai = company.dien_thoai || ''
+  formData.email = company.email || ''
+  formData.quy_mo = company.quy_mo || ''
   formData.mo_ta = company.mo_ta || ''
   formData.website = company.website || ''
+  formData.trang_thai = company.trang_thai ?? 1
   showModal.value = true
 }
 
 // Submit form
 const submitForm = async () => {
   try {
-    if (editingCompany.value) {
-      await companyService.updateCompany(editingCompany.value, formData)
-    } else {
-      await companyService.createCompany(formData)
-    }
+    await companyService.updateCompany(editingCompany.value, formData)
     showModal.value = false
     await loadCompanies()
+    await loadStats()
+    notify.success('Đã cập nhật công ty')
   } catch (err) {
     error.value = err.message || 'Lỗi lưu công ty'
   }
@@ -162,6 +161,8 @@ const deleteCompany = async () => {
     await companyService.deleteCompany(deletingCompany.value.id)
     showDeleteModal.value = false
     await loadCompanies()
+    await loadStats()
+    notify.success('Đã xóa công ty')
   } catch (err) {
     error.value = err.message || 'Lỗi xóa công ty'
   }
@@ -172,6 +173,8 @@ const toggleStatus = async (companyId) => {
   try {
     await companyService.toggleCompanyStatus(companyId)
     await loadCompanies()
+    await loadStats()
+    notify.success('Đã cập nhật trạng thái công ty')
   } catch (err) {
     error.value = err.message || 'Lỗi cập nhật trạng thái'
   }
@@ -194,6 +197,7 @@ const onFilterChange = () => {
 // Lifecycle
 onMounted(() => {
   loadCompanies()
+  loadStats()
 })
 </script>
 
@@ -213,12 +217,6 @@ onMounted(() => {
       <h1 class="text-3xl font-black leading-tight tracking-tight">Quản Lý Công Ty</h1>
       <p class="text-slate-500 dark:text-slate-400 text-base">Quản lý danh sách công ty và tình trạng xác minh.</p>
     </div>
-    <button 
-      @click="openNewCompanyModal"
-      class="flex items-center gap-2 px-5 h-11 bg-[#2463eb] text-white rounded-xl text-sm font-bold hover:bg-[#2463eb]/90 transition-all shadow-md shadow-[#2463eb]/20"
-    >
-      <span class="material-symbols-outlined text-lg">add</span> Thêm Công Ty
-    </button>
   </div>
 
   <!-- Stats Grid -->
@@ -245,22 +243,24 @@ onMounted(() => {
     </div>
     <div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-slate-500 text-sm font-medium">Đang duyệt</span>
+        <span class="text-slate-500 text-sm font-medium">Tạm ngưng</span>
         <span class="material-symbols-outlined text-amber-500/40">pending_actions</span>
       </div>
-      <div class="text-2xl font-bold text-amber-500">{{ stats.pending }}</div>
+      <div class="text-2xl font-bold text-amber-500">{{ stats.paused }}</div>
       <div class="mt-2 text-xs text-amber-600 font-medium flex items-center">
-        <span class="material-symbols-outlined text-xs mr-1">schedule</span> Cần xử lý
+        <span class="material-symbols-outlined text-xs mr-1">pause_circle</span> Cần rà soát
       </div>
     </div>
     <div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
       <div class="flex items-center justify-between mb-2">
-        <span class="text-slate-500 text-sm font-medium">Từ chối</span>
-        <span class="material-symbols-outlined text-red-500/40">cancel</span>
+        <span class="text-slate-500 text-sm font-medium">Quy mô nổi bật</span>
+        <span class="material-symbols-outlined text-[#2463eb]/40">bar_chart</span>
       </div>
-      <div class="text-2xl font-bold text-red-500">{{ stats.rejected }}</div>
-      <div class="mt-2 text-xs text-red-600 font-medium flex items-center">
-        <span class="material-symbols-outlined text-xs mr-1">close</span> Từ chối
+      <div class="text-2xl font-bold text-[#2463eb]">
+        {{ Object.keys(stats.scaleSummary).find((key) => stats.scaleSummary[key]) || 'N/A' }}
+      </div>
+      <div class="mt-2 text-xs text-slate-500 font-medium flex items-center">
+        <span class="material-symbols-outlined text-xs mr-1">insights</span> Theo dữ liệu hiện tại
       </div>
     </div>
   </div>
@@ -283,9 +283,8 @@ onMounted(() => {
       class="bg-slate-50 dark:bg-slate-800 border-none rounded-lg text-sm px-4 py-2 focus:ring-2 focus:ring-[#2463eb]"
     >
       <option value="">Tất cả trạng thái</option>
-      <option value="approved">Đã duyệt</option>
-      <option value="pending">Đang duyệt</option>
-      <option value="rejected">Từ chối</option>
+      <option :value="1">Hoạt động</option>
+      <option :value="0">Tạm ngưng</option>
     </select>
   </div>
 
@@ -411,7 +410,7 @@ onMounted(() => {
   <div v-if="showModal" class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">
     <div class="bg-white dark:bg-slate-900 rounded-xl shadow-xl max-w-md w-full mx-4">
       <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-        <h3 class="text-lg font-semibold">{{ editingCompany ? 'Chỉnh sửa công ty' : 'Tạo công ty mới' }}</h3>
+        <h3 class="text-lg font-semibold">Chỉnh sửa công ty</h3>
         <button @click="showModal = false" class="text-slate-400 hover:text-slate-600">
           <span class="material-symbols-outlined">close</span>
         </button>
@@ -422,8 +421,20 @@ onMounted(() => {
           <input v-model="formData.ten_cong_ty" type="text" required class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
         </div>
         <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mã số thuế</label>
+          <input v-model="formData.ma_so_thue" type="text" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+        </div>
+        <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Địa chỉ</label>
           <input v-model="formData.dia_chi" type="text" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Điện thoại</label>
+          <input v-model="formData.dien_thoai" type="text" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email liên hệ</label>
+          <input v-model="formData.email" type="email" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
         </div>
         <div>
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Quy mô</label>
@@ -442,12 +453,19 @@ onMounted(() => {
           <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Mô tả</label>
           <textarea v-model="formData.mo_ta" rows="3" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none"></textarea>
         </div>
+        <div>
+          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Trạng thái</label>
+          <select v-model.number="formData.trang_thai" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none">
+            <option :value="1">Hoạt động</option>
+            <option :value="0">Tạm ngưng</option>
+          </select>
+        </div>
         <div class="flex gap-3 pt-4">
           <button type="button" @click="showModal = false" class="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
             Hủy
           </button>
           <button type="submit" class="flex-1 px-4 py-2 bg-[#2463eb] text-white rounded-lg hover:bg-[#2463eb]/90 transition-colors font-medium">
-            {{ editingCompany ? 'Cập nhật' : 'Tạo' }}
+            Cập nhật
           </button>
         </div>
       </form>

@@ -11,11 +11,6 @@ class NguoiDungKyNang extends Model
      */
     protected $table = 'nguoi_dung_ky_nangs';
 
-    /**
-     * Không có updated_at (chỉ có created_at).
-     */
-    const UPDATED_AT = null;
-
     protected $fillable = [
         'nguoi_dung_id',
         'ky_nang_id',
@@ -23,6 +18,8 @@ class NguoiDungKyNang extends Model
         'nam_kinh_nghiem',
         'so_chung_chi',
         'hinh_anh',
+        'nguon_du_lieu',
+        'do_tin_cay',
     ];
 
     protected $casts = [
@@ -31,6 +28,7 @@ class NguoiDungKyNang extends Model
         'muc_do' => 'integer',
         'nam_kinh_nghiem' => 'integer',
         'so_chung_chi' => 'integer',
+        'do_tin_cay' => 'float',
     ];
 
     // ==========================================

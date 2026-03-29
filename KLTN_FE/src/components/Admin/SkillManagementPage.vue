@@ -1,160 +1,349 @@
 <script setup>
+import { computed, onMounted, reactive, ref } from 'vue'
+import { adminSkillService } from '@/services/api'
+import { useNotify } from '@/composables/useNotify'
+
+const notify = useNotify()
+
+const skills = ref([])
+const loading = ref(false)
+const error = ref('')
+const currentPage = ref(1)
+const totalSkills = ref(0)
+const perPage = ref(10)
+const searchQuery = ref('')
+const sortBy = ref('ten_ky_nang')
+const sortDir = ref('asc')
+
+const stats = reactive({
+  total: 0,
+  withDescription: 0,
+  withIcon: 0,
+})
+
+const showModal = ref(false)
+const showDeleteModal = ref(false)
+const editingSkill = ref(null)
+const deletingSkill = ref(null)
+
+const formData = reactive({
+  ten_ky_nang: '',
+  mo_ta: '',
+  icon: '',
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(totalSkills.value / perPage.value)))
+
+const normalizeSkills = (response) => {
+  const payload = response?.data
+
+  if (Array.isArray(payload)) {
+    skills.value = payload
+    totalSkills.value = response?.total || payload.length
+    return
+  }
+
+  if (payload?.data && Array.isArray(payload.data)) {
+    skills.value = payload.data
+    totalSkills.value = payload.total || payload.meta?.total || payload.data.length
+    return
+  }
+
+  skills.value = []
+  totalSkills.value = 0
+}
+
+const loadStats = async () => {
+  try {
+    const response = await adminSkillService.getStats()
+    const payload = response?.data || {}
+    stats.total = payload.tong || 0
+    stats.withDescription = payload.co_mo_ta || 0
+    stats.withIcon = payload.co_icon || 0
+  } catch (err) {
+    console.error('Không thể tải thống kê kỹ năng', err)
+  }
+}
+
+const loadSkills = async () => {
+  loading.value = true
+  error.value = ''
+
+  try {
+    const response = await adminSkillService.getSkills({
+      page: currentPage.value,
+      per_page: perPage.value,
+      search: searchQuery.value || undefined,
+      sort_by: sortBy.value,
+      sort_dir: sortDir.value,
+    })
+
+    normalizeSkills(response)
+  } catch (err) {
+    error.value = err.message || 'Không thể tải danh sách kỹ năng'
+  } finally {
+    loading.value = false
+  }
+}
+
+const refreshAll = async () => {
+  await Promise.all([loadSkills(), loadStats()])
+}
+
+const resetForm = () => {
+  formData.ten_ky_nang = ''
+  formData.mo_ta = ''
+  formData.icon = ''
+}
+
+const openCreateModal = () => {
+  editingSkill.value = null
+  resetForm()
+  showModal.value = true
+}
+
+const openEditModal = (skill) => {
+  editingSkill.value = skill
+  formData.ten_ky_nang = skill.ten_ky_nang || ''
+  formData.mo_ta = skill.mo_ta || ''
+  formData.icon = skill.icon || ''
+  showModal.value = true
+}
+
+const submitForm = async () => {
+  try {
+    const payload = {
+      ten_ky_nang: formData.ten_ky_nang,
+      mo_ta: formData.mo_ta || null,
+      icon: formData.icon || null,
+    }
+
+    if (editingSkill.value) {
+      await adminSkillService.updateSkill(editingSkill.value.id, payload)
+      notify.success('Đã cập nhật kỹ năng')
+    } else {
+      await adminSkillService.createSkill(payload)
+      notify.success('Đã tạo kỹ năng')
+    }
+
+    showModal.value = false
+    await refreshAll()
+  } catch (err) {
+    error.value = err.message || 'Không thể lưu kỹ năng'
+  }
+}
+
+const confirmDelete = (skill) => {
+  deletingSkill.value = skill
+  showDeleteModal.value = true
+}
+
+const deleteSkill = async () => {
+  try {
+    await adminSkillService.deleteSkill(deletingSkill.value.id)
+    showDeleteModal.value = false
+    deletingSkill.value = null
+    notify.success('Đã xóa kỹ năng')
+    await refreshAll()
+  } catch (err) {
+    error.value = err.message || 'Không thể xóa kỹ năng'
+  }
+}
+
+const onFilterChange = async () => {
+  currentPage.value = 1
+  await loadSkills()
+}
+
+onMounted(async () => {
+  await refreshAll()
+})
 </script>
 
 <template>
-  <!-- Header Actions -->
-  <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+  <div v-if="error" class="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300">
+    {{ error }}
+  </div>
+
+  <div class="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
     <div>
-      <h1 class="text-3xl font-black tracking-tight">Skill Inventory</h1>
-      <p class="text-slate-500 mt-1">Configure and manage skills for advanced AI talent matching and project staffing.</p>
+      <h1 class="text-3xl font-black tracking-tight">Quản lý kỹ năng</h1>
+      <p class="mt-1 text-slate-500">Quản lý danh mục kỹ năng để phục vụ matching, CV parsing và AI recommendation.</p>
     </div>
-    <div class="flex gap-3">
-      <button class="flex items-center gap-2 px-4 h-11 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50">
-        <span class="material-symbols-outlined">file_download</span> Export
-      </button>
-      <button class="flex items-center gap-2 px-5 h-11 bg-[#2463eb] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#2463eb]/20 hover:bg-[#2463eb]/90 transition-all">
-        <span class="material-symbols-outlined">add</span> Add New Skill
-      </button>
-    </div>
+    <button @click="openCreateModal" class="flex h-11 items-center gap-2 rounded-xl bg-[#2463eb] px-5 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition-all hover:bg-[#2463eb]/90">
+      <span class="material-symbols-outlined">add</span> Thêm kỹ năng
+    </button>
   </div>
 
-  <!-- Summary Stats -->
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
-    <div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-      <p class="text-slate-500 text-sm font-medium">Total Tracked Skills</p>
-      <div class="flex items-center justify-between mt-2">
-        <p class="text-3xl font-bold">1,284</p>
-        <span class="text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-1 rounded text-xs font-bold">+12 this month</span>
+  <div class="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-3">
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-sm font-medium text-slate-500">Tổng kỹ năng</p>
+      <div class="mt-2 flex items-center justify-between">
+        <p class="text-3xl font-bold">{{ stats.total }}</p>
+        <span class="rounded bg-[#2463eb]/10 px-2 py-1 text-xs font-bold text-[#2463eb]">Catalog</span>
       </div>
     </div>
-    <div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-      <p class="text-slate-500 text-sm font-medium">Active Categories</p>
-      <div class="flex items-center justify-between mt-2">
-        <p class="text-3xl font-bold">12</p>
-        <span class="text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-xs font-bold">Standardized</span>
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-sm font-medium text-slate-500">Có mô tả</p>
+      <div class="mt-2 flex items-center justify-between">
+        <p class="text-3xl font-bold">{{ stats.withDescription }}</p>
+        <span class="rounded bg-emerald-500/10 px-2 py-1 text-xs font-bold text-emerald-500">Chuẩn hóa</span>
       </div>
     </div>
-    <div class="bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-      <p class="text-slate-500 text-sm font-medium">Matching Accuracy</p>
-      <div class="flex items-center justify-between mt-2">
-        <p class="text-3xl font-bold">94.2%</p>
-        <span class="text-[#2463eb] bg-[#2463eb]/10 px-2 py-1 rounded text-xs font-bold">AI Optimized</span>
+    <div class="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <p class="text-sm font-medium text-slate-500">Có icon</p>
+      <div class="mt-2 flex items-center justify-between">
+        <p class="text-3xl font-bold">{{ stats.withIcon }}</p>
+        <span class="rounded bg-slate-100 px-2 py-1 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">Hiển thị tốt</span>
       </div>
     </div>
   </div>
 
-  <!-- Skill Table -->
-  <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden flex flex-col">
-    <div class="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center gap-2">
-        <button class="px-4 py-2 text-sm font-bold bg-[#2463eb]/10 text-[#2463eb] rounded-lg">All Skills</button>
-        <button class="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg">Technical</button>
-        <button class="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg">Soft Skills</button>
-        <button class="px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg">Management</button>
+  <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-4 dark:border-slate-800">
+      <div class="relative min-w-[260px] flex-1">
+        <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+        <input
+          v-model="searchQuery"
+          @input="onFilterChange"
+          type="text"
+          class="w-full rounded-lg border-none bg-slate-100 py-2.5 pl-10 pr-4 text-sm text-slate-600 focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800 dark:text-slate-400"
+          placeholder="Tìm theo tên kỹ năng hoặc mô tả..."
+        />
       </div>
       <div class="flex items-center gap-3">
-        <select class="bg-slate-100 dark:bg-slate-800 border-none rounded-lg text-sm text-slate-600 dark:text-slate-400 h-9 pl-3 pr-8">
-          <option>Usage: High to Low</option>
-          <option>Alphabetical</option>
-          <option>Recently Added</option>
+        <select v-model="sortBy" @change="onFilterChange" class="h-10 rounded-lg border-none bg-slate-100 px-3 text-sm text-slate-600 focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800 dark:text-slate-400">
+          <option value="ten_ky_nang">Tên kỹ năng</option>
+          <option value="created_at">Ngày tạo</option>
+          <option value="id">ID</option>
         </select>
-        <button class="size-9 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-500">
-          <span class="material-symbols-outlined text-[20px]">filter_list</span>
-        </button>
+        <select v-model="sortDir" @change="onFilterChange" class="h-10 rounded-lg border-none bg-slate-100 px-3 text-sm text-slate-600 focus:ring-2 focus:ring-[#2463eb] dark:bg-slate-800 dark:text-slate-400">
+          <option value="asc">A-Z / Cũ trước</option>
+          <option value="desc">Z-A / Mới trước</option>
+        </select>
       </div>
     </div>
+
     <div class="overflow-x-auto">
-      <table class="w-full text-left">
-        <thead class="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800">
+      <table class="w-full table-fixed text-left">
+        <thead class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
           <tr>
-            <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Skill Name</th>
-            <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Category</th>
-            <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Tags</th>
-            <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Usage Freq.</th>
-            <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">AI Score</th>
-            <th class="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Actions</th>
+            <th class="w-[30%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Kỹ năng</th>
+            <th class="w-[40%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả</th>
+            <th class="w-[15%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Icon</th>
+            <th class="w-[15%] px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">Hành động</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-          <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-            <td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center font-bold text-xs">JS</div><span class="font-bold">React.js</span></div></td>
-            <td class="px-6 py-4"><span class="px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 text-xs font-bold rounded">Technical</span></td>
-            <td class="px-6 py-4"><div class="flex gap-1"><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">Frontend</span><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">Web</span></div></td>
-            <td class="px-6 py-4"><div class="flex flex-col gap-1.5 w-24"><div class="flex justify-between text-[10px] font-bold"><span>82%</span><span class="text-slate-400">High</span></div><div class="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full"><div class="h-full bg-[#2463eb] rounded-full" style="width: 82%"></div></div></div></td>
-            <td class="px-6 py-4 text-sm font-semibold text-emerald-500">9.8/10</td>
-            <td class="px-6 py-4 text-right"><button class="text-slate-400 hover:text-[#2463eb]"><span class="material-symbols-outlined text-[20px]">edit</span></button><button class="text-slate-400 hover:text-red-500 ml-3"><span class="material-symbols-outlined text-[20px]">delete</span></button></td>
+          <tr v-if="loading">
+            <td colspan="4" class="px-6 py-10 text-center text-slate-500">
+              <span class="material-symbols-outlined animate-spin">hourglass_empty</span>
+              <div class="mt-2">Đang tải kỹ năng...</div>
+            </td>
           </tr>
-          <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-            <td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded bg-orange-100 dark:bg-orange-900/30 text-orange-600 flex items-center justify-center font-bold text-xs">EQ</div><span class="font-bold">Conflict Resolution</span></div></td>
-            <td class="px-6 py-4"><span class="px-2.5 py-1 bg-orange-50 dark:bg-orange-500/10 text-orange-600 text-xs font-bold rounded">Soft Skills</span></td>
-            <td class="px-6 py-4"><div class="flex gap-1"><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">Management</span><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">EQ</span></div></td>
-            <td class="px-6 py-4"><div class="flex flex-col gap-1.5 w-24"><div class="flex justify-between text-[10px] font-bold"><span>45%</span><span class="text-slate-400">Med</span></div><div class="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full"><div class="h-full bg-[#2463eb] rounded-full" style="width: 45%"></div></div></div></td>
-            <td class="px-6 py-4 text-sm font-semibold text-emerald-500">8.4/10</td>
-            <td class="px-6 py-4 text-right"><button class="text-slate-400 hover:text-[#2463eb]"><span class="material-symbols-outlined text-[20px]">edit</span></button><button class="text-slate-400 hover:text-red-500 ml-3"><span class="material-symbols-outlined text-[20px]">delete</span></button></td>
+
+          <tr v-else-if="skills.length === 0">
+            <td colspan="4" class="px-6 py-10 text-center text-slate-500">
+              <span class="material-symbols-outlined text-3xl">psychology</span>
+              <div class="mt-2">Không tìm thấy kỹ năng phù hợp.</div>
+            </td>
           </tr>
-          <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-            <td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded bg-purple-100 dark:bg-purple-900/30 text-purple-600 flex items-center justify-center font-bold text-xs">AI</div><span class="font-bold">TensorFlow</span></div></td>
-            <td class="px-6 py-4"><span class="px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 text-xs font-bold rounded">Technical</span></td>
-            <td class="px-6 py-4"><div class="flex gap-1"><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">ML</span><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">Python</span></div></td>
-            <td class="px-6 py-4"><div class="flex flex-col gap-1.5 w-24"><div class="flex justify-between text-[10px] font-bold"><span>68%</span><span class="text-slate-400">High</span></div><div class="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full"><div class="h-full bg-[#2463eb] rounded-full" style="width: 68%"></div></div></div></td>
-            <td class="px-6 py-4 text-sm font-semibold text-emerald-500">9.2/10</td>
-            <td class="px-6 py-4 text-right"><button class="text-slate-400 hover:text-[#2463eb]"><span class="material-symbols-outlined text-[20px]">edit</span></button><button class="text-slate-400 hover:text-red-500 ml-3"><span class="material-symbols-outlined text-[20px]">delete</span></button></td>
-          </tr>
-          <tr class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-            <td class="px-6 py-4"><div class="flex items-center gap-3"><div class="size-8 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center font-bold text-xs">UX</div><span class="font-bold">Figma Mastery</span></div></td>
-            <td class="px-6 py-4"><span class="px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 text-xs font-bold rounded">Technical</span></td>
-            <td class="px-6 py-4"><div class="flex gap-1"><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">Design</span><span class="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 text-[10px] rounded font-medium">UX/UI</span></div></td>
-            <td class="px-6 py-4"><div class="flex flex-col gap-1.5 w-24"><div class="flex justify-between text-[10px] font-bold"><span>94%</span><span class="text-slate-400">Very High</span></div><div class="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full"><div class="h-full bg-[#2463eb] rounded-full" style="width: 94%"></div></div></div></td>
-            <td class="px-6 py-4 text-sm font-semibold text-emerald-500">9.9/10</td>
-            <td class="px-6 py-4 text-right"><button class="text-slate-400 hover:text-[#2463eb]"><span class="material-symbols-outlined text-[20px]">edit</span></button><button class="text-slate-400 hover:text-red-500 ml-3"><span class="material-symbols-outlined text-[20px]">delete</span></button></td>
+
+          <tr v-for="skill in skills" :key="skill.id" class="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+            <td class="px-6 py-4">
+              <div class="flex items-center gap-3">
+                <div class="flex size-8 items-center justify-center rounded bg-[#2463eb]/10 font-bold text-[#2463eb]">
+                  {{ skill.ten_ky_nang?.slice(0, 2).toUpperCase() }}
+                </div>
+                <span class="font-bold">{{ skill.ten_ky_nang }}</span>
+              </div>
+            </td>
+            <td class="px-6 py-4 text-sm text-slate-500">
+              {{ skill.mo_ta || 'Chưa có mô tả' }}
+            </td>
+            <td class="px-6 py-4 text-sm text-slate-500">
+              {{ skill.icon || 'Không có' }}
+            </td>
+            <td class="px-6 py-4 text-right">
+              <button @click="openEditModal(skill)" class="text-slate-400 hover:text-[#2463eb]">
+                <span class="material-symbols-outlined text-[20px]">edit</span>
+              </button>
+              <button @click="confirmDelete(skill)" class="ml-3 text-slate-400 hover:text-red-500">
+                <span class="material-symbols-outlined text-[20px]">delete</span>
+              </button>
+            </td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div class="p-4 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-      <p class="text-sm text-slate-500 font-medium">Showing 1-10 of 1,284 skills</p>
+
+    <div v-if="!loading && skills.length > 0" class="flex items-center justify-between border-t border-slate-200 p-4 dark:border-slate-800">
+      <p class="text-sm font-medium text-slate-500">Hiển thị {{ (currentPage - 1) * perPage + 1 }}-{{ Math.min(currentPage * perPage, totalSkills) }} của {{ totalSkills }} kỹ năng</p>
       <div class="flex items-center gap-2">
-        <button class="size-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400"><span class="material-symbols-outlined text-sm">chevron_left</span></button>
-        <button class="size-8 flex items-center justify-center rounded-lg bg-[#2463eb] text-white font-bold text-xs">1</button>
-        <button class="size-8 flex items-center justify-center rounded-lg text-slate-500 font-bold text-xs hover:bg-slate-50">2</button>
-        <button class="size-8 flex items-center justify-center rounded-lg text-slate-500 font-bold text-xs hover:bg-slate-50">3</button>
-        <span class="text-slate-400 text-xs">...</span>
-        <button class="size-8 flex items-center justify-center rounded-lg text-slate-500 font-bold text-xs hover:bg-slate-50">128</button>
-        <button class="size-8 flex items-center justify-center rounded-lg border border-slate-200 dark:border-slate-700 text-slate-400"><span class="material-symbols-outlined text-sm">chevron_right</span></button>
+        <button @click="currentPage > 1 && (currentPage--, loadSkills())" :disabled="currentPage === 1" class="flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 disabled:opacity-50 dark:border-slate-700">
+          <span class="material-symbols-outlined text-sm">chevron_left</span>
+        </button>
+        <button
+          v-for="page in totalPages"
+          :key="page"
+          @click="currentPage = page; loadSkills()"
+          :class="['flex size-8 items-center justify-center rounded-lg text-xs font-bold', currentPage === page ? 'bg-[#2463eb] text-white' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800']"
+        >
+          {{ page }}
+        </button>
+        <button @click="currentPage < totalPages && (currentPage++, loadSkills())" :disabled="currentPage === totalPages" class="flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 disabled:opacity-50 dark:border-slate-700">
+          <span class="material-symbols-outlined text-sm">chevron_right</span>
+        </button>
       </div>
     </div>
   </div>
 
-  <!-- AI Insights -->
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <div class="p-6 bg-slate-900 text-white rounded-xl flex items-center justify-between overflow-hidden relative">
-      <div class="relative z-10 flex flex-col gap-2">
-        <div class="flex items-center gap-2 text-[#2463eb]">
-          <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
-          <span class="text-xs font-bold uppercase tracking-widest">AI Suggestion</span>
-        </div>
-        <h3 class="text-xl font-bold">New skill trend detected: "Prompt Engineering"</h3>
-        <p class="text-slate-400 text-sm max-w-sm">34% of recent job descriptions in your sector now require this. Consider adding it to your technical skill set.</p>
-        <button class="mt-2 text-[#2463eb] text-sm font-bold flex items-center gap-1">Add to inventory <span class="material-symbols-outlined text-[16px]">arrow_forward</span></button>
+  <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+    <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl dark:bg-slate-900">
+      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+        <h3 class="text-lg font-semibold">{{ editingSkill ? 'Chỉnh sửa kỹ năng' : 'Tạo kỹ năng mới' }}</h3>
+        <button @click="showModal = false" class="text-slate-400 hover:text-slate-600">
+          <span class="material-symbols-outlined">close</span>
+        </button>
       </div>
-      <div class="absolute right-0 top-0 h-full w-1/3 opacity-20 bg-gradient-to-l from-[#2463eb] to-transparent pointer-events-none"></div>
+      <form @submit.prevent="submitForm" class="space-y-4 p-6">
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Tên kỹ năng</label>
+          <input v-model="formData.ten_ky_nang" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Icon</label>
+          <input v-model="formData.icon" type="text" placeholder="code" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Mô tả</label>
+          <textarea v-model="formData.mo_ta" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800"></textarea>
+        </div>
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showModal = false" class="rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Hủy</button>
+          <button type="submit" class="rounded-lg bg-[#2463eb] px-5 py-2 text-white transition-colors hover:bg-[#2463eb]/90">
+            {{ editingSkill ? 'Lưu thay đổi' : 'Tạo kỹ năng' }}
+          </button>
+        </div>
+      </form>
     </div>
-    <div class="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex items-center justify-between">
-      <div class="flex flex-col gap-1">
-        <h3 class="text-lg font-bold">Skill Coverage Gaps</h3>
-        <p class="text-slate-500 text-sm">Your organization is currently low on "Cybersecurity" experts.</p>
-        <div class="flex items-center gap-4 mt-3">
-          <div class="flex -space-x-2">
-            <div class="size-7 rounded-full border-2 border-white dark:border-slate-900 bg-slate-200"></div>
-            <div class="size-7 rounded-full border-2 border-white dark:border-slate-900 bg-slate-300"></div>
-            <div class="size-7 rounded-full border-2 border-white dark:border-slate-900 bg-slate-400"></div>
-          </div>
-          <span class="text-xs font-bold text-slate-400">0 matching employees</span>
-        </div>
+  </div>
+
+  <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+    <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">
+      <div class="mb-3 flex items-center gap-3">
+        <span class="material-symbols-outlined text-2xl text-red-500">warning</span>
+        <h3 class="text-lg font-semibold">Xóa kỹ năng</h3>
       </div>
-      <button class="p-3 rounded-full bg-slate-50 dark:bg-slate-800 text-slate-500">
-        <span class="material-symbols-outlined">analytics</span>
-      </button>
+      <p class="text-sm leading-6 text-slate-500">
+        Bạn có chắc muốn xóa kỹ năng <strong>{{ deletingSkill?.ten_ky_nang }}</strong>?
+      </p>
+      <div class="mt-6 flex justify-end gap-3">
+        <button @click="showDeleteModal = false" class="rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Hủy</button>
+        <button @click="deleteSkill" class="rounded-lg bg-red-600 px-4 py-2 text-white transition-colors hover:bg-red-700">
+          Xóa kỹ năng
+        </button>
+      </div>
     </div>
   </div>
 </template>

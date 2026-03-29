@@ -22,7 +22,7 @@ class CapNhatCongTyRequest extends FormRequest
             'dien_thoai' => ['nullable', 'string', 'max:20'],
             'email' => ['nullable', 'email', 'max:100'],
             'website' => ['nullable', 'string', 'max:200'],
-            'logo' => ['nullable', 'string', 'max:255'],
+            'logo' => ['nullable', 'file', 'image', 'max:2048'],
             'nganh_nghe_id' => ['nullable', 'integer', 'exists:nganh_nghes,id'],
             'quy_mo' => ['nullable', 'string', 'in:' . implode(',', CongTy::QUY_MO_LIST)],
         ];

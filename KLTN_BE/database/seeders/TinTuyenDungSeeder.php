@@ -5,8 +5,8 @@ namespace Database\Seeders;
 use App\Models\CongTy;
 use App\Models\NganhNghe;
 use App\Models\TinTuyenDung;
-use Carbon\Carbon;
 use Illuminate\Database\Seeder;
+use Carbon\Carbon;
 
 class TinTuyenDungSeeder extends Seeder
 {
@@ -16,153 +16,111 @@ class TinTuyenDungSeeder extends Seeder
         $nganhNghes = NganhNghe::all();
 
         if ($congTys->isEmpty() || $nganhNghes->isEmpty()) {
-            $this->command?->warn('Khong co du lieu cong ty hoac nganh nghe de seed tin tuyen dung.');
             return;
         }
 
-        // Dam bao cong ty co trang thai hoat dong de tin public hien ra
-        CongTy::query()->update(['trang_thai' => 1]);
-
-        $mauTinPublic = [
+        $mauTin = [
             [
-                'tieu_de' => 'Lap trinh vien PHP/Laravel (Senior)',
-                'mo_ta_cong_viec' => "Phat trien cac ung dung web su dung Laravel.\nTham gia phan tich thiet ke he thong, review code.\nToi uu hieu nang va bao mat cho ung dung.",
-                'dia_diem_lam_viec' => 'Quan 1, TP.HCM',
-                'hinh_thuc_lam_viec' => 'full_time',
+                'tieu_de' => 'Lập trình viên PHP/Laravel (Senior)',
+                'mo_ta_cong_viec' => "Phát triển các ứng dụng web phức tạp sử dụng Laravel framework.\nTham gia phân tích thiết kế hệ thống, review code.\nTối ưu hóa hiệu năng, bảo mật cho ứng dụng.",
+                'dia_diem_lam_viec' => 'Quận 1, TP.HCM',
+                'hinh_thuc_lam_viec' => 'Toàn thời gian',
                 'cap_bac' => 'Senior',
                 'so_luong_tuyen' => 2,
                 'muc_luong' => 30000000,
-                'kinh_nghiem_yeu_cau' => '3 - 5 nam',
+                'kinh_nghiem_yeu_cau' => '3 - 5 năm',
                 'ngay_het_han' => Carbon::now()->addDays(30),
             ],
             [
-                'tieu_de' => 'Chuyen vien Marketing Digital',
-                'mo_ta_cong_viec' => "Len ke hoach va trien khai cac chien dich quang cao Facebook, Google.\nPhan tich du lieu, toi uu ROI.\nQuan ly doi ngu content creator.",
-                'dia_diem_lam_viec' => 'Ha Noi',
-                'hinh_thuc_lam_viec' => 'full_time',
-                'cap_bac' => 'Truong nhom',
+                'tieu_de' => 'Chuyên viên Marketing Digital',
+                'mo_ta_cong_viec' => "Lên kế hoạch và triển khai các chiến dịch quảng cáo Facebook, Google.\nPhân tích dữ liệu, tối ưu hóa ROI.\nQuản lý đội ngũ content creator.",
+                'dia_diem_lam_viec' => 'Hà Nội',
+                'hinh_thuc_lam_viec' => 'Toàn thời gian',
+                'cap_bac' => 'Trưởng nhóm',
                 'so_luong_tuyen' => 1,
                 'muc_luong' => 25000000,
-                'kinh_nghiem_yeu_cau' => '2 - 3 nam',
-                'ngay_het_han' => Carbon::now()->addDays(20),
-            ],
-            [
-                'tieu_de' => 'Thuc tap sinh Frontend (ReactJS)',
-                'mo_ta_cong_viec' => "Ho tro cat HTML/CSS tu Figma.\nTham gia phat trien UI components bang ReactJS.\nDuoc dao tao truc tiep voi mentor.",
-                'dia_diem_lam_viec' => 'Da Nang',
-                'hinh_thuc_lam_viec' => 'internship',
-                'cap_bac' => 'Thuc tap sinh',
-                'so_luong_tuyen' => 5,
-                'muc_luong' => 5000000,
-                'kinh_nghiem_yeu_cau' => 'Khong yeu cau',
-                'ngay_het_han' => Carbon::now()->addDays(45),
-            ],
-            [
-                'tieu_de' => 'Nhan vien Tuyen dung (HR)',
-                'mo_ta_cong_viec' => "Tim kiem, sang loc ho so ung vien.\nTo chuc phong van va danh gia ung vien.\nXay dung van hoa doanh nghiep.",
-                'dia_diem_lam_viec' => 'Quan 7, TP.HCM',
-                'hinh_thuc_lam_viec' => 'full_time',
-                'cap_bac' => 'Nhan vien',
-                'so_luong_tuyen' => 2,
-                'muc_luong' => 12000000,
-                'kinh_nghiem_yeu_cau' => '1 - 2 nam',
+                'kinh_nghiem_yeu_cau' => '2 - 3 năm',
                 'ngay_het_han' => Carbon::now()->addDays(15),
             ],
             [
-                'tieu_de' => 'Designer Part-time',
-                'mo_ta_cong_viec' => "Thiet ke banner, poster, social media visual.\nHo tro team marketing va san pham.",
-                'dia_diem_lam_viec' => 'Quan 3, TP.HCM',
-                'hinh_thuc_lam_viec' => 'part_time',
-                'cap_bac' => 'Nhan vien',
-                'so_luong_tuyen' => 3,
-                'muc_luong' => 8000000,
-                'kinh_nghiem_yeu_cau' => 'Duoi 1 nam',
-                'ngay_het_han' => Carbon::now()->addDays(25),
+                'tieu_de' => 'Thực tập sinh Frontend (ReactJS)',
+                'mo_ta_cong_viec' => "Hỗ trợ cắt HTML/CSS từ file thiết kế Figma.\nTham gia phát triển các UI components bằng ReactJS.\nĐược đào tạo và làm việc trực tiếp với các anh chị Senior.",
+                'dia_diem_lam_viec' => 'Đà Nẵng',
+                'hinh_thuc_lam_viec' => 'Thực tập',
+                'cap_bac' => 'Thực tập sinh',
+                'so_luong_tuyen' => 5,
+                'muc_luong' => 5000000,
+                'kinh_nghiem_yeu_cau' => 'Không yêu cầu',
+                'ngay_het_han' => Carbon::now()->addDays(45),
             ],
             [
-                'tieu_de' => 'Data Analyst Remote',
-                'mo_ta_cong_viec' => "Phan tich du lieu kinh doanh.\nXay dung dashboard bao cao.\nDua ra insight ho tro quyet dinh.",
+                'tieu_de' => 'Nhân viên Tuyển dụng (HR)',
+                'mo_ta_cong_viec' => "Tìm kiếm, sàng lọc hồ sơ ứng viên trên các nền tảng.\nTổ chức phỏng vấn, đánh giá ứng viên.\nXây dựng văn hóa doanh nghiệp.",
+                'dia_diem_lam_viec' => 'Quận 7, TP.HCM',
+                'hinh_thuc_lam_viec' => 'Toàn thời gian',
+                'cap_bac' => 'Nhân viên',
+                'so_luong_tuyen' => 2,
+                'muc_luong' => 12000000,
+                'kinh_nghiem_yeu_cau' => '1 - 2 năm',
+                'ngay_het_han' => Carbon::now()->addDays(10),
+            ],
+            [
+                'tieu_de' => 'Data Analyst',
+                'mo_ta_cong_viec' => "Phân tích dữ liệu kinh doanh.\nXây dựng dashboard báo cáo.\nĐưa ra insights hỗ trợ ban giám đốc.",
                 'dia_diem_lam_viec' => 'Remote',
-                'hinh_thuc_lam_viec' => 'remote',
-                'cap_bac' => 'Chuyen vien',
+                'hinh_thuc_lam_viec' => 'Remote',
+                'cap_bac' => 'Chuyên viên',
                 'so_luong_tuyen' => 1,
                 'muc_luong' => 45000000,
-                'kinh_nghiem_yeu_cau' => 'Tren 3 nam',
-                'ngay_het_han' => Carbon::now()->addDays(35),
+                'kinh_nghiem_yeu_cau' => 'Trên 5 năm',
+                'ngay_het_han' => Carbon::now()->subDays(5), // Tin đã hết hạn
             ],
+            [
+                'tieu_de' => 'Thiết kế đồ họa (Designer)',
+                'mo_ta_cong_viec' => "Thiết kế ấn phẩm truyền thông (banner, poster).\nHỗ trợ thiết kế giao diện UI/UX.\nChỉnh sửa video cơ bản.",
+                'dia_diem_lam_viec' => 'Quận 3, TP.HCM',
+                'hinh_thuc_lam_viec' => 'Bán thời gian',
+                'cap_bac' => 'Nhân viên',
+                'so_luong_tuyen' => 3,
+                'muc_luong' => 8000000,
+                'kinh_nghiem_yeu_cau' => 'Dưới 1 năm',
+                'ngay_het_han' => Carbon::now()->addDays(20),
+            ]
         ];
 
+        // Tạo 6 tin cho công ty đầu tiên (để có đủ case test)
         $congTy1 = $congTys->first();
-
-        foreach ($mauTinPublic as $tin) {
+        foreach ($mauTin as $index => $tin) {
             $record = TinTuyenDung::create(array_merge($tin, [
                 'cong_ty_id' => $congTy1->id,
-                'trang_thai' => 1,
-                'luot_xem' => rand(10, 500),
+                'trang_thai' => $index == 4 ? 0 : 1, // Tin Data Analyst bị tạm ngưng
+                'luot_xem' => rand(10, 500)
             ]));
-
-            $record->nganhNghes()->attach(
-                $nganhNghes->random(rand(1, 2))->pluck('id')->toArray()
-            );
+            
+            // Random gắn 1-2 ngành nghề
+            $record->nganhNghes()->attach($nganhNghes->random(rand(1, 2))->pluck('id'));
         }
 
-        // Them mot vai tin test an/het han de kiem tra bo loc public
-        $tinAn = TinTuyenDung::create([
-            'tieu_de' => 'Backend Developer (Tin tam an)',
-            'mo_ta_cong_viec' => 'Tin nay dung de test bo loc trang thai.',
-            'dia_diem_lam_viec' => 'TP.HCM',
-            'hinh_thuc_lam_viec' => 'full_time',
-            'cap_bac' => 'Nhan vien',
-            'so_luong_tuyen' => 1,
-            'muc_luong' => 20000000,
-            'kinh_nghiem_yeu_cau' => '2 nam',
-            'ngay_het_han' => Carbon::now()->addDays(20),
-            'cong_ty_id' => $congTy1->id,
-            'trang_thai' => 0,
-            'luot_xem' => rand(0, 100),
-        ]);
-        $tinAn->nganhNghes()->attach($nganhNghes->random(1)->pluck('id')->toArray());
-
-        $tinHetHan = TinTuyenDung::create([
-            'tieu_de' => 'QA Engineer (Tin het han)',
-            'mo_ta_cong_viec' => 'Tin nay dung de test bo loc ngay het han.',
-            'dia_diem_lam_viec' => 'Ha Noi',
-            'hinh_thuc_lam_viec' => 'full_time',
-            'cap_bac' => 'Nhan vien',
-            'so_luong_tuyen' => 1,
-            'muc_luong' => 15000000,
-            'kinh_nghiem_yeu_cau' => '1 nam',
-            'ngay_het_han' => Carbon::now()->subDays(3),
-            'cong_ty_id' => $congTy1->id,
-            'trang_thai' => 1,
-            'luot_xem' => rand(0, 100),
-        ]);
-        $tinHetHan->nganhNghes()->attach($nganhNghes->random(1)->pluck('id')->toArray());
-
-        // Tao them du lieu random nhung van uu tien hien tren public
-        for ($i = 0; $i < 12; $i++) {
+        // Tạo 15 tin ngẫu nhiên cho các công ty còn lại
+        for ($i = 0; $i < 15; $i++) {
             $cty = $congTys->random();
-
             $record = TinTuyenDung::create([
-                'tieu_de' => 'Can tuyen vi tri so ' . ($i + 1),
-                'mo_ta_cong_viec' => 'Mo ta cong viec chung mau cho doanh nghiep.',
-                'dia_diem_lam_viec' => ['TP.HCM', 'Ha Noi', 'Da Nang', 'Can Tho'][rand(0, 3)],
-                'hinh_thuc_lam_viec' => ['full_time', 'part_time', 'internship', 'remote', 'hybrid'][rand(0, 4)],
-                'cap_bac' => ['Nhan vien', 'Quan ly', 'Thuc tap sinh'][rand(0, 2)],
+                'tieu_de' => 'Cần tuyển vị trí số ' . ($i + 1),
+                'mo_ta_cong_viec' => 'Mô tả công việc chung mẫu...',
+                'dia_diem_lam_viec' => ['TP.HCM', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ'][rand(0, 3)],
+                'hinh_thuc_lam_viec' => TinTuyenDung::HINH_THUC_LIST[array_rand(TinTuyenDung::HINH_THUC_LIST)],
+                'cap_bac' => ['Nhân viên', 'Quản lý', 'Thực tập sinh'][rand(0, 2)],
                 'so_luong_tuyen' => rand(1, 5),
-                'muc_luong' => rand(7, 35) * 1000000,
-                'kinh_nghiem_yeu_cau' => rand(0, 5) . ' nam',
-                'ngay_het_han' => Carbon::now()->addDays(rand(10, 60)),
+                'muc_luong' => rand(5, 30) * 1000000,
+                'kinh_nghiem_yeu_cau' => rand(1, 4) . ' năm',
+                'ngay_het_han' => rand(0, 1) ? Carbon::now()->addDays(rand(5, 60)) : Carbon::now()->subDays(rand(1, 10)),
                 'cong_ty_id' => $cty->id,
-                'trang_thai' => 1,
-                'luot_xem' => rand(0, 200),
+                'trang_thai' => rand(0, 10) > 2 ? 1 : 0, // 80% hoạt động
+                'luot_xem' => rand(0, 100)
             ]);
-
-            $record->nganhNghes()->attach(
-                $nganhNghes->random(rand(1, 3))->pluck('id')->toArray()
-            );
+            $record->nganhNghes()->attach($nganhNghes->random(rand(1, 3))->pluck('id'));
         }
 
-        $this->command?->info('TinTuyenDungSeeder: da tao du lieu tin tuyen dung mau.');
+        echo "✅ TinTuyenDungSeeder: Đã tạo 21 tin tuyển dụng mẫu!\n";
     }
 }

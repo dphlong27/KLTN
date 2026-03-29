@@ -7,6 +7,7 @@ use App\Http\Requests\CongTy\TaoCongTyRequest;
 use App\Http\Requests\CongTy\CapNhatCongTyRequest;
 use App\Models\CongTy;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * NhaTuyenDungCongTyController - NTD quản lý công ty của mình
@@ -21,6 +22,16 @@ use Illuminate\Http\JsonResponse;
  */
 class NhaTuyenDungCongTyController extends Controller
 {
+    private function mapCompanyData(CongTy $congTy): array
+    {
+        $data = $congTy->toArray();
+        $data['logo_url'] = $congTy->logo
+            ? url('/api/v1/cong-ty-logo?path=' . urlencode($congTy->logo))
+            : null;
+
+        return $data;
+    }
+
     /**
      * GET /api/v1/nha-tuyen-dung/cong-ty
      * Xem công ty của NTD đang đăng nhập.
@@ -40,7 +51,7 @@ class NhaTuyenDungCongTyController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $congTy,
+            'data' => $this->mapCompanyData($congTy),
         ]);
     }
 
@@ -64,12 +75,16 @@ class NhaTuyenDungCongTyController extends Controller
         $data = $request->validated();
         $data['nguoi_dung_id'] = $nguoiDungId;
 
+        if ($request->hasFile('logo')) {
+            $data['logo'] = $request->file('logo')->store('cong_ty_logos', 'public');
+        }
+
         $congTy = CongTy::create($data);
 
         return response()->json([
             'success' => true,
             'message' => 'Tạo công ty thành công.',
-            'data' => $congTy->load('nganhNghe:id,ten_nganh'),
+            'data' => $this->mapCompanyData($congTy->load('nganhNghe:id,ten_nganh')),
         ], 201);
     }
 
@@ -90,12 +105,20 @@ class NhaTuyenDungCongTyController extends Controller
 
         $data = $request->validated();
 
+        if ($request->hasFile('logo')) {
+            if ($congTy->logo) {
+                Storage::disk('public')->delete($congTy->logo);
+            }
+
+            $data['logo'] = $request->file('logo')->store('cong_ty_logos', 'public');
+        }
+
         $congTy->update($data);
 
         return response()->json([
             'success' => true,
             'message' => 'Cập nhật công ty thành công.',
-            'data' => $congTy->fresh()->load('nganhNghe:id,ten_nganh'),
+            'data' => $this->mapCompanyData($congTy->fresh()->load('nganhNghe:id,ten_nganh')),
         ]);
     }
 }

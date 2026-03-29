@@ -19,11 +19,11 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->redirectGuestsTo(function (Request $request) {
-            if ($request->expectsJson() || $request->is('api/*')) {
+            if ($request->is('api/*')) {
                 return null;
             }
 
-            return route('login');
+            return '/login';
         });
 
         // Ghi chú: Hiện tại không dùng statefulApi() vì project dùng Bearer Token thuần túy

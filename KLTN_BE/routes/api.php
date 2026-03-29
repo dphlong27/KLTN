@@ -15,6 +15,15 @@ use App\Http\Controllers\Api\UngVienKetQuaMatchingController;
 use App\Http\Controllers\Api\UngVienTuVanNgheNghiepController;
 use App\Http\Controllers\Api\UngVienLuuTinController;
 use App\Http\Controllers\Api\UngVienUngTuyenController;
+use App\Http\Controllers\Api\CvParsingController;
+use App\Http\Controllers\Api\JdParsingController;
+use App\Http\Controllers\Api\MatchingController;
+use App\Http\Controllers\Api\CoverLetterController;
+use App\Http\Controllers\Api\CareerReportController;
+use App\Http\Controllers\Api\SemanticSearchController;
+use App\Http\Controllers\Api\AiChatSessionController;
+use App\Http\Controllers\Api\AiChatMessageController;
+use App\Http\Controllers\Api\MockInterviewController;
 use App\Http\Controllers\Api\Admin\AdminNguoiDungController;
 use App\Http\Controllers\Api\Admin\AdminHoSoController;
 use App\Http\Controllers\Api\Admin\AdminNganhNgheController;
@@ -22,6 +31,7 @@ use App\Http\Controllers\Api\Admin\AdminKyNangController;
 use App\Http\Controllers\Api\Admin\AdminNguoiDungKyNangController;
 use App\Http\Controllers\Api\Admin\AdminCongTyController;
 use App\Http\Controllers\Api\Admin\AdminTinTuyenDungController;
+use App\Http\Controllers\Api\Admin\AdminMarketDashboardController;
 use App\Http\Controllers\Api\Admin\AdminLuuTinController;
 use App\Http\Controllers\Api\Admin\AdminUngTuyenController;
 use App\Http\Controllers\Api\Admin\AdminKetQuaMatchingController;
@@ -55,6 +65,33 @@ Route::post('v1/dang-ky', [AuthController::class, 'dangKy'])
 Route::post('v1/dang-nhap', [AuthController::class, 'dangNhap'])
     ->name('auth.dang-nhap');
 
+// Đăng nhập bằng Google (Socialite)
+Route::get('v1/auth/google/redirect', [AuthController::class, 'redirectGoogle'])
+    ->name('auth.google.redirect');
+Route::get('v1/auth/google/callback', [AuthController::class, 'callbackGoogle'])
+    ->name('auth.google.callback');
+
+// Quên mật khẩu — tạo token đặt lại mật khẩu
+Route::post('v1/quen-mat-khau', [AuthController::class, 'quenMatKhau'])
+    ->name('auth.quen-mat-khau');
+
+// Đặt lại mật khẩu bằng token
+Route::post('v1/dat-lai-mat-khau', [AuthController::class, 'datLaiMatKhau'])
+    ->name('auth.dat-lai-mat-khau');
+
+// Gửi lại email xác thực tài khoản
+Route::post('v1/gui-lai-email-xac-thuc', [AuthController::class, 'guiLaiEmailXacThuc'])
+    ->name('auth.gui-lai-email-xac-thuc');
+
+// Xác thực email qua liên kết đã ký
+Route::get('v1/xac-thuc-email/{id}/{hash}', [AuthController::class, 'xacThucEmail'])
+    ->middleware('signed')
+    ->name('verification.verify');
+
+// Ảnh đại diện public từ storage hiện tại
+Route::get('v1/anh-dai-dien', [AuthController::class, 'avatar'])
+    ->name('auth.avatar');
+
 
 // ============================================================
 // NHÓM 2: AUTH — Cần Bearer Token (tất cả vai trò)
@@ -71,7 +108,7 @@ Route::get('v1/ho-so', [AuthController::class, 'hoSo'])
     ->name('auth.ho-so');
 
 // Cập nhật hồ sơ cá nhân (hỗ trợ upload ảnh đại diện)
-Route::put('v1/cap-nhat-ho-so', [AuthController::class, 'capNhatHoSo'])
+Route::put('v1/ho-so', [AuthController::class, 'capNhatHoSo'])
     ->middleware('auth:sanctum')
     ->name('auth.cap-nhat-ho-so');
 
@@ -89,6 +126,10 @@ Route::post('v1/doi-mat-khau', [AuthController::class, 'doiMatKhau'])
 Route::get('v1/admin/nguoi-dungs/thong-ke', [AdminNguoiDungController::class, 'thongKe'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.nguoi-dungs.thong-ke');
+
+Route::get('v1/admin/thi-truong/dashboard', [AdminMarketDashboardController::class, 'overview'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.thi-truong.dashboard');
 
 // Danh sách tất cả người dùng (có lọc, tìm kiếm, phân trang)
 Route::get('v1/admin/nguoi-dungs', [AdminNguoiDungController::class, 'index'])
@@ -155,6 +196,93 @@ Route::patch('v1/ung-vien/ho-sos/{id}/trang-thai', [HoSoController::class, 'doiT
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ho-sos.doi-trang-thai');
 
+// Parse CV bằng AI
+Route::post('v1/ung-vien/ho-sos/{id}/parse', [CvParsingController::class, 'parse'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ho-sos.parse');
+
+// Sinh kết quả matching theo hồ sơ
+Route::post('v1/ung-vien/ho-sos/{id}/matching', [MatchingController::class, 'generate'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ho-sos.matching');
+
+// Sinh báo cáo tư vấn nghề nghiệp
+Route::post('v1/ung-vien/ho-sos/{id}/career-report', [CareerReportController::class, 'generate'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ho-sos.career-report');
+
+Route::get('v1/ai-chat/sessions', [AiChatSessionController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.sessions.index');
+
+Route::post('v1/ai-chat/sessions', [AiChatSessionController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.sessions.store');
+
+Route::patch('v1/ai-chat/sessions/{id}/status', [AiChatSessionController::class, 'updateStatus'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.sessions.update-status');
+
+Route::get('v1/ai-chat/sessions/{id}/messages', [AiChatSessionController::class, 'messages'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.sessions.messages');
+
+Route::delete('v1/ai-chat/sessions/{id}/messages', [AiChatSessionController::class, 'clearMessages'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.sessions.clear-messages');
+
+Route::post('v1/ai-chat/messages', [AiChatMessageController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.messages.store');
+
+Route::post('v1/ai-chat/messages/stream', [AiChatMessageController::class, 'stream'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ai-chat.messages.stream');
+
+Route::get('v1/mock-interview/sessions', [MockInterviewController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.index');
+
+Route::get('v1/mock-interview/dashboard', [MockInterviewController::class, 'dashboard'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.dashboard');
+
+Route::post('v1/mock-interview/sessions', [MockInterviewController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.store');
+
+Route::get('v1/mock-interview/sessions/{id}/messages', [MockInterviewController::class, 'messages'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.messages');
+
+Route::patch('v1/mock-interview/sessions/{id}/status', [MockInterviewController::class, 'updateStatus'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.update-status');
+
+Route::delete('v1/mock-interview/sessions/{id}', [MockInterviewController::class, 'clearSession'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.destroy');
+
+Route::post('v1/mock-interview/messages', [MockInterviewController::class, 'answer'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.messages.answer');
+
+Route::post('v1/mock-interview/messages/stream', [MockInterviewController::class, 'stream'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.messages.stream');
+
+Route::post('v1/mock-interview/sessions/{id}/report', [MockInterviewController::class, 'generateReport'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.report.generate');
+
+Route::post('v1/mock-interview/sessions/{id}/report/stream', [MockInterviewController::class, 'streamReport'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.report.stream');
+
+Route::get('v1/mock-interview/sessions/{id}/report', [MockInterviewController::class, 'showReport'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('mock-interview.sessions.report.show');
+
 
 // ============================================================
 // NHÓM 5: NHÀ TUYỂN DỤNG — Xem hồ sơ ứng viên (vai_tro = 1)
@@ -170,6 +298,11 @@ Route::get('v1/nha-tuyen-dung/ho-sos/{id}', [NhaTuyenDungHoSoController::class, 
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
     ->name('nha-tuyen-dung.ho-sos.show');
 
+// Xem file CV công khai của ứng viên
+Route::get('v1/nha-tuyen-dung/ho-sos/{id}/cv', [NhaTuyenDungHoSoController::class, 'downloadCv'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.ho-sos.cv');
+
 
 // ============================================================
 // NHÓM 6: ADMIN — Quản lý hồ sơ ứng viên (vai_tro = 2)
@@ -180,7 +313,7 @@ Route::get('v1/admin/ho-sos/thong-ke', [AdminHoSoController::class, 'thongKe'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.ho-sos.thong-ke');
 
-// Danh sách hồ sơ đã xoá mềm (thùng rác)
+// Danh sách hồ sơ lưu trữ
 Route::get('v1/admin/ho-sos/da-xoa', [AdminHoSoController::class, 'danhSachDaXoa'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.ho-sos.da-xoa');
@@ -200,20 +333,28 @@ Route::patch('v1/admin/ho-sos/{id}/trang-thai', [AdminHoSoController::class, 'do
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.ho-sos.doi-trang-thai');
 
-// Xoá mềm hồ sơ (soft delete — có thể khôi phục)
+// Lưu trữ hồ sơ (soft delete — có thể khôi phục)
 Route::delete('v1/admin/ho-sos/{id}', [AdminHoSoController::class, 'destroy'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.ho-sos.destroy');
 
-// Khôi phục hồ sơ đã xoá mềm
+// Khôi phục hồ sơ đã lưu trữ
 Route::patch('v1/admin/ho-sos/{id}/khoi-phuc', [AdminHoSoController::class, 'khoiPhuc'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.ho-sos.khoi-phuc');
+
+// Xóa vĩnh viễn hồ sơ đã lưu trữ
+Route::delete('v1/admin/ho-sos/{id}/xoa-vinh-vien', [AdminHoSoController::class, 'xoaVinhVien'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.ho-sos.xoa-vinh-vien');
 
 
 // ============================================================
 // NHÓM 7: PUBLIC — Danh mục ngành nghề (không cần xác thực)
 // ============================================================
+
+Route::get('v1/tin-tuyen-dungs/semantic-search', [SemanticSearchController::class, 'searchJobs'])
+    ->name('tin-tuyen-dungs.semantic-search');
 
 // Danh sách ngành nghề hiển thị (dạng phẳng)
 Route::get('v1/nganh-nghes', [NganhNgheController::class, 'index'])
@@ -371,6 +512,30 @@ Route::post('v1/ung-vien/ung-tuyens', [UngVienUngTuyenController::class, 'store'
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ung-tuyens.store');
 
+Route::patch('v1/ung-vien/ung-tuyens/{id}', [UngVienUngTuyenController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ung-tuyens.update');
+
+Route::patch('v1/ung-vien/ung-tuyens/{id}/xac-nhan-phong-van', [UngVienUngTuyenController::class, 'xacNhanPhongVan'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ung-tuyens.confirm-interview');
+
+Route::patch('v1/ung-vien/ung-tuyens/{id}/rut-don', [UngVienUngTuyenController::class, 'rutDon'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ung-tuyens.withdraw');
+
+Route::get('v1/ung-vien/ung-tuyens/{id}/xac-nhan-phong-van/email/{action}', [UngVienUngTuyenController::class, 'xacNhanPhongVanQuaEmail'])
+    ->middleware('signed')
+    ->name('ung-vien.ung-tuyens.confirm-interview-email');
+
+Route::post('v1/ung-vien/ung-tuyens/generate-cover-letter', [CoverLetterController::class, 'generate'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ung-tuyens.generate-cover-letter');
+
+Route::patch('v1/ung-vien/ung-tuyens/{id}/confirm-cover-letter', [CoverLetterController::class, 'confirm'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ung-tuyens.confirm-cover-letter');
+
 
 // ============================================================
 // NHÓM 24: ỨNG VIÊN — Việc Làm Gợi Ý (AI Matching)
@@ -421,6 +586,10 @@ Route::get('v1/cong-tys', [CongTyController::class, 'index'])
 // Chi tiết công ty
 Route::get('v1/cong-tys/{id}', [CongTyController::class, 'show'])
     ->name('cong-tys.show');
+
+// Logo công ty public
+Route::get('v1/cong-ty-logo', [CongTyController::class, 'logo'])
+    ->name('cong-tys.logo');
 
 // ============================================================
 // NHÓM 16: PUBLIC — Tin tuyển dụng (không cần xác thực)
@@ -480,6 +649,10 @@ Route::delete('v1/nha-tuyen-dung/tin-tuyen-dungs/{id}', [NhaTuyenDungTinTuyenDun
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
     ->name('nha-tuyen-dung.tin-tuyen-dungs.destroy');
 
+Route::post('v1/nha-tuyen-dung/tin-tuyen-dungs/{id}/parse', [JdParsingController::class, 'parse'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.tin-tuyen-dungs.parse');
+
 
 // ============================================================
 // NHÓM 22: NHÀ TUYỂN DỤNG — Duyệt hồ sơ ứng tuyển (vai_tro = 1)
@@ -492,6 +665,10 @@ Route::get('v1/nha-tuyen-dung/ung-tuyens', [NhaTuyenDungUngTuyenController::clas
 Route::patch('v1/nha-tuyen-dung/ung-tuyens/{id}/trang-thai', [NhaTuyenDungUngTuyenController::class, 'updateTrangThai'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
     ->name('nha-tuyen-dung.ung-tuyens.update-trang-thai');
+
+Route::post('v1/nha-tuyen-dung/ung-tuyens/{id}/gui-lai-email-phong-van', [NhaTuyenDungUngTuyenController::class, 'guiLaiEmailPhongVan'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.ung-tuyens.gui-lai-email-phong-van');
 
 
 // ============================================================
@@ -611,4 +788,3 @@ Route::get('v1/admin/tu-van-nghe-nghieps/thong-ke', [AdminTuVanNgheNghiepControl
 Route::get('v1/admin/tu-van-nghe-nghieps', [AdminTuVanNgheNghiepController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.tu-van-nghe-nghieps.index');
-

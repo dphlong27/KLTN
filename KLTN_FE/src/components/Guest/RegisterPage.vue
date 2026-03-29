@@ -1,38 +1,111 @@
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
 
 const router = useRouter()
+const route = useRoute()
 const accountType = ref('candidate')
 const isLoading = ref(false)
 const showPassword = ref(false)
+const showConfirmPassword = ref(false)
 const successMessage = ref('')
 const errorMessage = ref('')
 
-// Register form
 const registerForm = reactive({
   fullName: '',
+  companyName: '',
+  contactPerson: '',
   email: '',
   phone: '',
   password: '',
+  confirmPassword: '',
 })
 
 const registerErrors = reactive({
   fullName: '',
+  companyName: '',
+  contactPerson: '',
   email: '',
   phone: '',
   password: '',
+  confirmPassword: '',
 })
 
-// Validate register form
-const validateRegister = () => {
+const isEmployer = computed(() => accountType.value === 'employer')
+
+const pageCopy = computed(() => {
+  if (isEmployer.value) {
+    return {
+      showcaseTitle: 'Tăng tốc tuyển dụng cùng AI.',
+      showcaseDescription:
+        'Thiết lập hồ sơ doanh nghiệp, đăng tin nhanh hơn và tiếp cận đúng ứng viên với hệ thống tuyển dụng thông minh.',
+      headTitle: 'Đăng ký nhà tuyển dụng',
+      headDescription: 'Tạo tài khoản doanh nghiệp để quản lý công ty và đăng tin tuyển dụng.',
+      submitLabel: 'Tạo tài khoản tuyển dụng',
+      loginHint: 'Đã có tài khoản doanh nghiệp?',
+      fullNameLabel: 'Người liên hệ',
+      fullNamePlaceholder: 'Nhập họ tên người phụ trách tuyển dụng',
+    }
+  }
+
+  return {
+    showcaseTitle: 'Nâng tầm sự nghiệp cùng AI.',
+    showcaseDescription:
+      'Kết nối đúng người, đúng việc với công nghệ trí tuệ nhân tạo hàng đầu. Khởi đầu hành trình mới của bạn ngay hôm nay.',
+    headTitle: 'Đăng ký ứng viên',
+    headDescription: 'Tham gia mạng lưới tuyển dụng thông minh ngay hôm nay.',
+    submitLabel: 'Tạo tài khoản SmartJob AI',
+    loginHint: 'Bạn đã có tài khoản?',
+    fullNameLabel: 'Họ và tên',
+    fullNamePlaceholder: 'Nhập họ và tên của bạn',
+  }
+})
+
+const resetMessages = () => {
+  errorMessage.value = ''
+  successMessage.value = ''
+}
+
+const clearValidationErrors = () => {
   registerErrors.fullName = ''
+  registerErrors.companyName = ''
+  registerErrors.contactPerson = ''
   registerErrors.email = ''
   registerErrors.phone = ''
   registerErrors.password = ''
+  registerErrors.confirmPassword = ''
+}
 
-  if (!registerForm.fullName.trim()) {
+watch(
+  () => route.query.role,
+  (role) => {
+    accountType.value = role === 'employer' ? 'employer' : 'candidate'
+  },
+  { immediate: true }
+)
+
+watch(accountType, (type) => {
+  clearValidationErrors()
+  resetMessages()
+
+  router.replace({
+    query: type === 'employer' ? { ...route.query, role: 'employer' } : {},
+  })
+})
+
+const validateRegister = () => {
+  clearValidationErrors()
+
+  if (isEmployer.value) {
+    if (!registerForm.companyName.trim()) {
+      registerErrors.companyName = 'Vui lòng nhập tên công ty'
+    }
+
+    if (!registerForm.contactPerson.trim()) {
+      registerErrors.contactPerson = 'Vui lòng nhập người liên hệ'
+    }
+  } else if (!registerForm.fullName.trim()) {
     registerErrors.fullName = 'Vui lòng nhập họ tên'
   }
 
@@ -54,41 +127,72 @@ const validateRegister = () => {
     registerErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự'
   }
 
+  if (!registerForm.confirmPassword) {
+    registerErrors.confirmPassword = 'Vui lòng xác nhận mật khẩu'
+  } else if (registerForm.confirmPassword !== registerForm.password) {
+    registerErrors.confirmPassword = 'Mật khẩu xác nhận không khớp'
+  }
+
   return Object.values(registerErrors).every(err => !err)
 }
 
-// Handle register
 const handleRegister = async () => {
-  if (!validateRegister()) {
-    return
-  }
+  if (!validateRegister()) return
 
   isLoading.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  resetMessages()
 
   try {
-    const response = await authService.registerCandidate(
-      registerForm.fullName,
-      registerForm.email,
-      registerForm.phone,
-      registerForm.password
-    )
+    const registeredEmail = registerForm.email.trim()
+    const companyDraft = isEmployer.value
+      ? {
+        ten_cong_ty: registerForm.companyName.trim(),
+        email: registeredEmail,
+        dien_thoai: registerForm.phone.trim(),
+        nguoi_lien_he: registerForm.contactPerson.trim(),
+      }
+      : null
+
+    const response = isEmployer.value
+      ? await authService.registerEmployer(
+        registerForm.companyName,
+        registerForm.contactPerson,
+        registerForm.email,
+        registerForm.phone,
+        registerForm.password
+      )
+      : await authService.registerCandidate(
+        registerForm.fullName,
+        registerForm.email,
+        registerForm.phone,
+        registerForm.password
+      )
 
     if (response.success || response.message) {
+      if (companyDraft) {
+        window.sessionStorage.setItem('employer_company_draft', JSON.stringify(companyDraft))
+      }
+
       successMessage.value = 'Đăng ký thành công! Vui lòng đăng nhập.'
-      // Reset form
       Object.assign(registerForm, {
         fullName: '',
+        companyName: '',
+        contactPerson: '',
         email: '',
         phone: '',
         password: '',
+        confirmPassword: '',
       })
-      
-      // Redirect to login after 2 seconds
+
       setTimeout(() => {
-        router.push('/login')
-      }, 2000)
+        router.push({
+          path: '/login',
+          query: {
+            verify_pending: '1',
+            email: registeredEmail,
+          },
+        })
+      }, 1200)
     }
   } catch (error) {
     errorMessage.value = error.message || 'Đăng ký thất bại'
@@ -96,191 +200,548 @@ const handleRegister = async () => {
     isLoading.value = false
   }
 }
-
-// Handle social login
-const handleSocialLogin = (provider) => {
-  console.log(`Register with ${provider}`)
-}
 </script>
 
 <template>
-  <div class="flex-1 flex items-center justify-center p-4 md:p-10">
-    <!-- Message Alert -->
-    <div v-if="errorMessage || successMessage" class="fixed top-20 left-0 right-0 mx-auto max-w-[450px] z-50">
-      <div v-if="errorMessage" class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-200 px-6 py-3 rounded-lg flex items-center gap-2">
-        <span class="material-symbols-outlined text-lg">error</span>
-        <span>{{ errorMessage }}</span>
-      </div>
-      <div v-if="successMessage" class="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-200 px-6 py-3 rounded-lg flex items-center gap-2">
-        <span class="material-symbols-outlined text-lg">check_circle</span>
-        <span>{{ successMessage }}</span>
-      </div>
-    </div>
+  <div class="auth-page auth-page--register">
+    <section class="auth-showcase">
+      <div class="showcase-inner">
+        <RouterLink to="/" class="showcase-brand">
+          <span class="brand-mark">
+            <span class="material-symbols-outlined">rocket_launch</span>
+          </span>
+          <span>SmartJob AI</span>
+        </RouterLink>
 
-    <!-- Register Card -->
-    <div class="w-full max-w-[450px] bg-white dark:bg-slate-900 rounded-xl shadow-xl p-8 md:p-12">
-      <!-- Header -->
-      <div class="mb-8 text-center">
-        <div class="flex justify-center mb-4">
-          <span class="material-symbols-outlined text-5xl text-[#2463eb]">person_add</span>
+        <div class="showcase-copy">
+          <h1>{{ pageCopy.showcaseTitle }}</h1>
+          <p>{{ pageCopy.showcaseDescription }}</p>
         </div>
-        <h1 class="text-3xl font-black tracking-tight mb-2">Đăng ký</h1>
-        <p class="text-slate-500 dark:text-slate-400">Tạo tài khoản mới để bắt đầu ngay</p>
-      </div>
 
-      <!-- Account Type Selector -->
-      <div class="mb-6">
-        <label class="block text-sm font-bold mb-2">Loại tài khoản</label>
-        <div class="flex h-12 w-full items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800 p-1">
-          <label class="flex cursor-pointer h-full grow items-center justify-center rounded-lg px-2 transition-all" :class="accountType === 'candidate' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''">
-            <span class="text-sm font-semibold">Ứng viên</span>
-            <input v-model="accountType" class="invisible w-0" name="account_type" type="radio" value="candidate" />
-          </label>
-          <label class="flex cursor-pointer h-full grow items-center justify-center rounded-lg px-2 transition-all" :class="accountType === 'employer' ? 'bg-white dark:bg-slate-700 shadow-sm' : ''">
-            <span class="text-sm font-semibold">Doanh nghiệp</span>
-            <input v-model="accountType" class="invisible w-0" name="account_type" type="radio" value="employer" />
-          </label>
+        <div class="showcase-stats">
+          <div class="stat-card">
+            <strong>10k+</strong>
+            <span>Việc làm mới</span>
+          </div>
+          <div class="stat-card">
+            <strong>500+</strong>
+            <span>Doanh nghiệp</span>
+          </div>
         </div>
       </div>
+    </section>
 
-      <!-- Register Form -->
-      <form class="space-y-4" @submit.prevent="handleRegister">
-        <!-- Full Name -->
-        <div>
-          <label class="block text-sm font-semibold mb-1">Họ tên</label>
-          <input 
-            v-model="registerForm.fullName"
-            :class="{
-              'border-red-500 dark:border-red-500': registerErrors.fullName,
-              'border-slate-200 dark:border-slate-700': !registerErrors.fullName
-            }"
-            class="w-full rounded-lg dark:bg-slate-800 focus:ring-[#2463eb] focus:border-[#2463eb] border transition-colors" 
-            placeholder="Nguyễn Văn A" 
-            type="text"
-            :disabled="isLoading"
-          />
-          <span v-if="registerErrors.fullName" class="text-red-500 text-xs mt-1 block">{{ registerErrors.fullName }}</span>
+    <section class="auth-panel">
+      <div class="auth-shell">
+        <div v-if="errorMessage || successMessage" class="auth-alert-wrap">
+          <div v-if="errorMessage" class="auth-alert auth-alert--error">
+            <span class="material-symbols-outlined">error</span>
+            <span>{{ errorMessage }}</span>
+          </div>
+          <div v-if="successMessage" class="auth-alert auth-alert--success">
+            <span class="material-symbols-outlined">check_circle</span>
+            <span>{{ successMessage }}</span>
+          </div>
         </div>
 
-        <!-- Email -->
-        <div>
-          <label class="block text-sm font-semibold mb-1">Email</label>
-          <input 
-            v-model="registerForm.email"
-            :class="{
-              'border-red-500 dark:border-red-500': registerErrors.email,
-              'border-slate-200 dark:border-slate-700': !registerErrors.email
-            }"
-            class="w-full rounded-lg dark:bg-slate-800 focus:ring-[#2463eb] focus:border-[#2463eb] border transition-colors" 
-            placeholder="example@gmail.com" 
-            type="email"
-            :disabled="isLoading"
-          />
-          <span v-if="registerErrors.email" class="text-red-500 text-xs mt-1 block">{{ registerErrors.email }}</span>
+        <div class="auth-head">
+          <h2>{{ pageCopy.headTitle }}</h2>
+          <p>{{ pageCopy.headDescription }}</p>
         </div>
 
-        <!-- Phone -->
-        <div>
-          <label class="block text-sm font-semibold mb-1">Số điện thoại</label>
-          <input 
-            v-model="registerForm.phone"
-            :class="{
-              'border-red-500 dark:border-red-500': registerErrors.phone,
-              'border-slate-200 dark:border-slate-700': !registerErrors.phone
-            }"
-            class="w-full rounded-lg dark:bg-slate-800 focus:ring-[#2463eb] focus:border-[#2463eb] border transition-colors" 
-            placeholder="0901234567" 
-            type="tel"
-            :disabled="isLoading"
-          />
-          <span v-if="registerErrors.phone" class="text-red-500 text-xs mt-1 block">{{ registerErrors.phone }}</span>
-        </div>
-
-        <!-- Password -->
-        <div>
-          <label class="block text-sm font-semibold mb-1">Mật khẩu</label>
-          <div class="relative">
-            <input 
-              v-model="registerForm.password"
-              :type="showPassword ? 'text' : 'password'"
-              :class="{
-                'border-red-500 dark:border-red-500': registerErrors.password,
-                'border-slate-200 dark:border-slate-700': !registerErrors.password
-              }"
-              class="w-full rounded-lg dark:bg-slate-800 focus:ring-[#2463eb] focus:border-[#2463eb] border transition-colors pr-10" 
-              placeholder="••••••••"
-              :disabled="isLoading"
-            />
-            <button 
+        <div class="auth-card">
+          <div class="role-switch" role="tablist" aria-label="Chọn vai trò">
+            <button
               type="button"
-              @click="showPassword = !showPassword"
-              class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              class="role-button"
+              :class="{ active: accountType === 'candidate' }"
+              @click="accountType = 'candidate'"
             >
-              <span class="material-symbols-outlined text-sm">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+              Tôi muốn tìm việc
+            </button>
+            <button
+              type="button"
+              class="role-button"
+              :class="{ active: accountType === 'employer' }"
+              @click="accountType = 'employer'"
+            >
+              Tôi muốn tuyển dụng
             </button>
           </div>
-          <span v-if="registerErrors.password" class="text-red-500 text-xs mt-1 block">{{ registerErrors.password }}</span>
+
+          <form class="auth-form" @submit.prevent="handleRegister">
+            <div v-if="isEmployer" class="field-group">
+              <label for="companyName">Tên công ty</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.companyName }">
+                <span class="material-symbols-outlined">business</span>
+                <input
+                  id="companyName"
+                  v-model="registerForm.companyName"
+                  type="text"
+                  placeholder="Nhập tên công ty"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.companyName" class="field-error">{{ registerErrors.companyName }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="fullName">{{ pageCopy.fullNameLabel }}</label>
+              <div class="input-shell" :class="{ 'input-shell--error': isEmployer ? registerErrors.contactPerson : registerErrors.fullName }">
+                <span class="material-symbols-outlined">person</span>
+                <input
+                  v-if="isEmployer"
+                  id="fullName"
+                  v-model="registerForm.contactPerson"
+                  type="text"
+                  :placeholder="pageCopy.fullNamePlaceholder"
+                  :disabled="isLoading"
+                >
+                <input
+                  v-else
+                  id="fullName"
+                  v-model="registerForm.fullName"
+                  type="text"
+                  :placeholder="pageCopy.fullNamePlaceholder"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="isEmployer && registerErrors.contactPerson" class="field-error">{{ registerErrors.contactPerson }}</span>
+              <span v-else-if="!isEmployer && registerErrors.fullName" class="field-error">{{ registerErrors.fullName }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="email">Email</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.email }">
+                <span class="material-symbols-outlined">mail</span>
+                <input
+                  id="email"
+                  v-model="registerForm.email"
+                  type="email"
+                  placeholder="example@email.com"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.email" class="field-error">{{ registerErrors.email }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="phone">Số điện thoại</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.phone }">
+                <span class="material-symbols-outlined">call</span>
+                <input
+                  id="phone"
+                  v-model="registerForm.phone"
+                  type="tel"
+                  placeholder="Nhập số điện thoại"
+                  :disabled="isLoading"
+                >
+              </div>
+              <span v-if="registerErrors.phone" class="field-error">{{ registerErrors.phone }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="password">Mật khẩu</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.password }">
+                <span class="material-symbols-outlined">lock</span>
+                <input
+                  id="password"
+                  v-model="registerForm.password"
+                  :type="showPassword ? 'text' : 'password'"
+                  placeholder="••••••••"
+                  :disabled="isLoading"
+                >
+                <button
+                  type="button"
+                  class="toggle-visibility"
+                  :aria-label="showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                  @click="showPassword = !showPassword"
+                >
+                  <span class="material-symbols-outlined">{{ showPassword ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+              </div>
+              <span v-if="registerErrors.password" class="field-error">{{ registerErrors.password }}</span>
+            </div>
+
+            <div class="field-group">
+              <label for="confirmPassword">Xác nhận mật khẩu</label>
+              <div class="input-shell" :class="{ 'input-shell--error': registerErrors.confirmPassword }">
+                <span class="material-symbols-outlined">verified_user</span>
+                <input
+                  id="confirmPassword"
+                  v-model="registerForm.confirmPassword"
+                  :type="showConfirmPassword ? 'text' : 'password'"
+                  placeholder="Nhập lại mật khẩu"
+                  :disabled="isLoading"
+                >
+                <button
+                  type="button"
+                  class="toggle-visibility"
+                  :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+                  @click="showConfirmPassword = !showConfirmPassword"
+                >
+                  <span class="material-symbols-outlined">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
+                </button>
+              </div>
+              <span v-if="registerErrors.confirmPassword" class="field-error">{{ registerErrors.confirmPassword }}</span>
+            </div>
+
+            <button type="submit" class="submit-button" :disabled="isLoading">
+              <span v-if="isLoading" class="spinner"></span>
+              <span>{{ isLoading ? 'Đang đăng ký...' : pageCopy.submitLabel }}</span>
+            </button>
+          </form>
         </div>
 
-        <!-- Register Button -->
-        <button 
-          type="submit"
-          :disabled="isLoading"
-          class="w-full bg-[#2463eb] text-white font-bold py-3 rounded-lg mt-6 hover:bg-[#2463eb]/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-        >
-          <span v-if="!isLoading">Đăng ký</span>
-          <span v-else class="flex items-center gap-2">
-            <span class="material-symbols-outlined animate-spin">hourglass_top</span>
-            Đang xử lý...
-          </span>
-        </button>
-      </form>
-
-      <!-- Divider -->
-      <div class="mt-8">
-        <div class="relative flex py-5 items-center">
-          <div class="flex-grow border-t border-slate-300 dark:border-slate-700"></div>
-          <span class="flex-shrink mx-4 text-slate-400 text-sm">Hoặc đăng ký với</span>
-          <div class="flex-grow border-t border-slate-300 dark:border-slate-700"></div>
-        </div>
+        <p class="auth-switch">
+          {{ pageCopy.loginHint }}
+          <RouterLink to="/login">Đăng nhập ngay</RouterLink>
+        </p>
       </div>
-
-      <!-- Social Register -->
-      <div class="grid grid-cols-2 gap-4">
-        <button 
-          type="button"
-          @click="handleSocialLogin('google')"
-          :disabled="isLoading"
-          class="flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 rounded-lg py-2 hover:bg-white dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-        >
-          <svg class="w-5 h-5" viewBox="0 0 24 24">
-            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"></path>
-            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"></path>
-            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"></path>
-            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"></path>
-          </svg>
-          <span class="text-sm font-medium hidden sm:inline">Google</span>
-        </button>
-        <button 
-          type="button"
-          @click="handleSocialLogin('facebook')"
-          :disabled="isLoading"
-          class="flex items-center justify-center gap-2 border border-slate-200 dark:border-slate-700 rounded-lg py-2 hover:bg-white dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-        >
-          <svg class="w-5 h-5" fill="#1877F2" viewBox="0 0 24 24">
-            <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path>
-          </svg>
-          <span class="text-sm font-medium hidden sm:inline">Facebook</span>
-        </button>
-      </div>
-
-      <!-- Login Link -->
-      <p class="text-center text-sm text-slate-600 dark:text-slate-400 mt-8">
-        Đã có tài khoản? 
-        <router-link to="/login" class="text-[#2463eb] font-semibold hover:underline">
-          Đăng nhập tại đây
-        </router-link>
-      </p>
-    </div>
+    </section>
   </div>
 </template>
+
+<style scoped>
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.02fr 1fr;
+  background: #f8fbff;
+}
+
+.auth-showcase {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(103, 190, 255, 0.16), transparent 22%),
+    linear-gradient(180deg, #2f67ee 0%, #334fc6 46%, #2f3fa6 100%);
+  color: #fff;
+}
+
+.auth-showcase::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.24) 1px, transparent 1px);
+  background-size: 50px 50px;
+  opacity: 0.55;
+}
+
+.showcase-inner {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+  padding: 4rem 7vw;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.showcase-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  color: #fff;
+  text-decoration: none;
+  font-size: 1.7rem;
+  font-weight: 800;
+  margin-bottom: 3rem;
+}
+
+.brand-mark {
+  width: 3.6rem;
+  height: 3.6rem;
+  display: grid;
+  place-items: center;
+  border-radius: 1.15rem;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.brand-mark .material-symbols-outlined {
+  font-size: 1.8rem;
+}
+
+.showcase-copy h1 {
+  max-width: 34rem;
+  margin: 0 0 1.25rem;
+  font-size: clamp(3rem, 5vw, 4.7rem);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.showcase-copy p {
+  max-width: 34rem;
+  margin: 0;
+  color: rgba(236, 242, 255, 0.92);
+  font-size: 1.18rem;
+  line-height: 1.8;
+}
+
+.showcase-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.4rem;
+  max-width: 35rem;
+  margin-top: 3rem;
+}
+
+.stat-card {
+  padding: 1.6rem;
+  border-radius: 1.4rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+}
+
+.stat-card strong {
+  display: block;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.stat-card span {
+  display: block;
+  margin-top: 0.35rem;
+  color: rgba(236, 242, 255, 0.86);
+}
+
+.auth-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.auth-shell {
+  width: 100%;
+  max-width: 37rem;
+}
+
+.auth-alert-wrap {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.auth-alert {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.9rem 1rem;
+  border-radius: 1rem;
+  font-size: 0.95rem;
+}
+
+.auth-alert--error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+
+.auth-alert--success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+
+.auth-head h2 {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.auth-head p {
+  margin: 0.65rem 0 0;
+  color: #64748b;
+  line-height: 1.7;
+}
+
+.auth-card {
+  margin-top: 1.6rem;
+  padding: 2.2rem;
+  border-radius: 2rem;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(199, 210, 254, 0.7);
+  box-shadow: 0 30px 80px rgba(30, 64, 175, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.role-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  padding: 0.35rem;
+  border-radius: 1.25rem;
+  background: #eef4ff;
+}
+
+.role-button {
+  min-height: 3.2rem;
+  border: none;
+  border-radius: 1rem;
+  background: transparent;
+  color: #475569;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.role-button.active {
+  background: #fff;
+  color: #1d4ed8;
+  box-shadow: 0 8px 20px rgba(41, 95, 230, 0.12);
+}
+
+.field-group + .field-group {
+  margin-top: 1rem;
+}
+
+.field-group label {
+  display: block;
+  margin-bottom: 0.55rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.input-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0 1rem;
+  min-height: 3.7rem;
+  border-radius: 1rem;
+  border: 1px solid #dbe5f3;
+  background: #f8fbff;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.input-shell:focus-within {
+  border-color: #295fe6;
+  box-shadow: 0 0 0 4px rgba(41, 95, 230, 0.12);
+}
+
+.input-shell--error {
+  border-color: #ef4444;
+}
+
+.input-shell .material-symbols-outlined {
+  font-size: 1.25rem;
+  color: #6b7ca8;
+}
+
+.input-shell input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 1rem;
+  color: #0f172a;
+}
+
+.toggle-visibility {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.field-error {
+  display: block;
+  margin-top: 0.45rem;
+  color: #dc2626;
+  font-size: 0.82rem;
+}
+
+.submit-button {
+  margin-top: 1.4rem;
+  width: 100%;
+  min-height: 3.7rem;
+  border: none;
+  border-radius: 1rem;
+  background: linear-gradient(135deg, #2f67ee 0%, #2f46bf 100%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  cursor: pointer;
+  box-shadow: 0 18px 32px rgba(47, 103, 238, 0.24);
+}
+
+.submit-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+
+.auth-switch {
+  margin: 1.6rem 0 0;
+  color: #64748b;
+  text-align: center;
+}
+
+.auth-switch a {
+  margin-left: 0.35rem;
+  color: #295fe6;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 980px) {
+  .auth-page {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-showcase {
+    min-height: 22rem;
+  }
+
+  .auth-panel {
+    padding: 1.5rem;
+  }
+
+  .showcase-inner {
+    padding: 3rem 1.5rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .auth-card {
+    padding: 1.25rem;
+    border-radius: 1.4rem;
+  }
+
+  .showcase-copy h1 {
+    font-size: 2.3rem;
+  }
+
+  .showcase-stats {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
