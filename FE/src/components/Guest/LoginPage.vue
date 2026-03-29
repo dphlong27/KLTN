@@ -1,4 +1,5 @@
 <script setup>
+import AppLogo from '@/components/AppLogo.vue'
 import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
@@ -133,10 +134,7 @@ onMounted(() => {
     <section class="auth-showcase">
       <div class="showcase-inner">
         <RouterLink to="/" class="showcase-brand">
-          <span class="brand-mark">
-            <span class="material-symbols-outlined">rocket_launch</span>
-          </span>
-          <span>SmartJob AI</span>
+          <AppLogo size="lg" tone="light" title="AI Recruitment" subtitle="Career Intelligence Platform" />
         </RouterLink>
 
         <div class="showcase-copy">
@@ -182,7 +180,7 @@ onMounted(() => {
         </div>
 
         <div class="auth-head">
-          <h2>Đăng nhập - SmartJob AI</h2>
+          <h2>Đăng nhập - AI Recruitment</h2>
           <p>Chào mừng quay trở lại với tương lai nghề nghiệp của bạn.</p>
         </div>
 
@@ -306,32 +304,16 @@ onMounted(() => {
   padding: 4rem 7vw;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-top: 7rem;
 }
 
 .showcase-brand {
   display: inline-flex;
   align-items: center;
-  gap: 1rem;
   color: #fff;
   text-decoration: none;
-  font-size: 1.7rem;
-  font-weight: 800;
   margin-bottom: 3rem;
-}
-
-.brand-mark {
-  width: 3.6rem;
-  height: 3.6rem;
-  display: grid;
-  place-items: center;
-  border-radius: 1.15rem;
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-
-.brand-mark .material-symbols-outlined {
-  font-size: 1.8rem;
 }
 
 .showcase-copy h1 {

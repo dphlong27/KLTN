@@ -1,4 +1,5 @@
 <script setup>
+import AppLogo from '@/components/AppLogo.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
@@ -55,7 +56,7 @@ const pageCopy = computed(() => {
       'Kết nối đúng người, đúng việc với công nghệ trí tuệ nhân tạo hàng đầu. Khởi đầu hành trình mới của bạn ngay hôm nay.',
     headTitle: 'Đăng ký ứng viên',
     headDescription: 'Tham gia mạng lưới tuyển dụng thông minh ngay hôm nay.',
-    submitLabel: 'Tạo tài khoản SmartJob AI',
+    submitLabel: 'Tạo tài khoản AI Recruitment',
     loginHint: 'Bạn đã có tài khoản?',
     fullNameLabel: 'Họ và tên',
     fullNamePlaceholder: 'Nhập họ và tên của bạn',
@@ -207,10 +208,7 @@ const handleRegister = async () => {
     <section class="auth-showcase">
       <div class="showcase-inner">
         <RouterLink to="/" class="showcase-brand">
-          <span class="brand-mark">
-            <span class="material-symbols-outlined">rocket_launch</span>
-          </span>
-          <span>SmartJob AI</span>
+          <AppLogo size="lg" tone="light" title="AI Recruitment" subtitle="Career Intelligence Platform" />
         </RouterLink>
 
         <div class="showcase-copy">
@@ -435,32 +433,16 @@ const handleRegister = async () => {
   padding: 4rem 7vw;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-top: 7rem;
 }
 
 .showcase-brand {
   display: inline-flex;
   align-items: center;
-  gap: 1rem;
   color: #fff;
   text-decoration: none;
-  font-size: 1.7rem;
-  font-weight: 800;
   margin-bottom: 3rem;
-}
-
-.brand-mark {
-  width: 3.6rem;
-  height: 3.6rem;
-  display: grid;
-  place-items: center;
-  border-radius: 1.15rem;
-  background: rgba(255, 255, 255, 0.14);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-
-.brand-mark .material-symbols-outlined {
-  font-size: 1.8rem;
 }
 
 .showcase-copy h1 {
@@ -727,6 +709,7 @@ const handleRegister = async () => {
 
   .showcase-inner {
     padding: 3rem 1.5rem;
+    padding-top: 4rem;
   }
 }
 

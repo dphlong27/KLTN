@@ -4,6 +4,7 @@ import { authService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
 import { formatDateVN } from '@/utils/dateTime'
+import FormModalShell from '@/components/FormModalShell.vue'
 
 const notify = useNotify()
 
@@ -640,122 +641,115 @@ onMounted(fetchProfiles)
       </button>
     </div>
 
-    <div
+    <FormModalShell
       v-if="modalOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
-      @click.self="closeModal"
+      eyebrow="Quản lý hồ sơ"
+      :title="editingProfileId ? 'Cập nhật hồ sơ ứng tuyển' : 'Chuẩn bị hồ sơ ứng tuyển mới'"
+      description="Hoàn thiện hồ sơ để tăng chất lượng ứng tuyển và đồng bộ dữ liệu CV cá nhân."
+      max-width-class="max-w-4xl"
+      :submit-label="editingProfileId ? 'Lưu thay đổi' : 'Tạo hồ sơ'"
+      :submit-loading-label="editingProfileId ? 'Đang cập nhật...' : 'Đang tạo hồ sơ...'"
+      :saving="saving"
+      @close="closeModal"
+      @submit="submitProfile"
     >
-      <div class="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
-        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">{{ editingProfileId ? 'Chỉnh sửa hồ sơ' : 'Tạo hồ sơ mới' }}</p>
-            <h3 class="mt-2 text-2xl font-bold text-slate-900">
-              {{ editingProfileId ? 'Cập nhật hồ sơ ứng tuyển' : 'Chuẩn bị hồ sơ ứng tuyển mới' }}
-            </h3>
+      <template #summary>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Hồ sơ</p>
+          <p class="mt-2 text-base font-semibold text-slate-900">{{ form.tieu_de_ho_so || 'Chưa nhập tiêu đề hồ sơ' }}</p>
+          <p class="mt-1 text-sm text-slate-500">{{ degreeLabel(form.trinh_do) }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Kinh nghiệm</p>
+          <p class="mt-2 text-base font-semibold text-slate-900">{{ form.kinh_nghiem_nam || 0 }} năm</p>
+          <p class="mt-1 text-sm text-slate-500">{{ selectedFile ? selectedFile.name : 'Giữ file CV hiện tại hoặc chọn file mới' }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
+          <div class="mt-3">
+            <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
+              {{ Number(form.trang_thai) === 1 ? 'Công khai' : 'Ẩn' }}
+            </span>
           </div>
-          <button
-            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            type="button"
-            @click="closeModal"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
+          <p class="mt-2 text-sm text-slate-500">Chỉ hồ sơ công khai mới sẵn sàng cho nhà tuyển dụng tìm thấy.</p>
+        </div>
+      </template>
+
+      <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div class="md:col-span-2">
+          <label class="mb-2 block text-sm font-semibold text-slate-700">Tiêu đề hồ sơ</label>
+          <input
+            v-model="form.tieu_de_ho_so"
+            class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+            placeholder="Ví dụ: CV Backend Developer Laravel"
+            type="text"
+          />
         </div>
 
-        <div class="grid grid-cols-1 gap-5 px-6 py-6 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Tiêu đề hồ sơ</label>
-            <input
-              v-model="form.tieu_de_ho_so"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              placeholder="Ví dụ: CV Backend Developer Laravel"
-              type="text"
-            />
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Trình độ</label>
-            <select
-              v-model="form.trinh_do"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-            >
-              <option value="">Chọn trình độ</option>
-              <option v-for="option in educationOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Số năm kinh nghiệm</label>
-            <input
-              v-model="form.kinh_nghiem_nam"
-              min="0"
-              max="50"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              type="number"
-            />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Mục tiêu nghề nghiệp</label>
-            <textarea
-              v-model="form.muc_tieu_nghe_nghiep"
-              rows="4"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              placeholder="Mô tả ngắn định hướng nghề nghiệp và vị trí bạn muốn ứng tuyển."
-            />
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Mô tả bản thân</label>
-            <textarea
-              v-model="form.mo_ta_ban_than"
-              rows="4"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-              placeholder="Tóm tắt ngắn về kinh nghiệm, điểm mạnh và định hướng cá nhân."
-            />
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Trạng thái hồ sơ</label>
-            <select
-              v-model="form.trang_thai"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-            >
-              <option :value="1">Công khai</option>
-              <option :value="0">Ẩn</option>
-            </select>
-          </div>
-
-          <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700">File CV (PDF/DOC/DOCX)</label>
-            <label class="flex min-h-[54px] cursor-pointer items-center rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500 transition hover:border-blue-400 hover:text-blue-600">
-              <input class="hidden" type="file" accept=".pdf,.doc,.docx" @change="handleFileChange" />
-              {{ selectedFile ? selectedFile.name : editingProfileId ? 'Chọn file mới nếu muốn thay thế CV hiện tại' : 'Chọn file CV để upload' }}
-            </label>
-          </div>
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-700">Trình độ</label>
+          <select
+            v-model="form.trinh_do"
+            class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+          >
+            <option value="">Chọn trình độ</option>
+            <option v-for="option in educationOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
         </div>
 
-        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:justify-end">
-          <button
-            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            type="button"
-            @click="closeModal"
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-700">Số năm kinh nghiệm</label>
+          <input
+            v-model="form.kinh_nghiem_nam"
+            min="0"
+            max="50"
+            class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+            type="number"
+          />
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="mb-2 block text-sm font-semibold text-slate-700">Mục tiêu nghề nghiệp</label>
+          <textarea
+            v-model="form.muc_tieu_nghe_nghiep"
+            rows="4"
+            class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+            placeholder="Mô tả ngắn định hướng nghề nghiệp và vị trí bạn muốn ứng tuyển."
+          />
+        </div>
+
+        <div class="md:col-span-2">
+          <label class="mb-2 block text-sm font-semibold text-slate-700">Mô tả bản thân</label>
+          <textarea
+            v-model="form.mo_ta_ban_than"
+            rows="4"
+            class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+            placeholder="Tóm tắt ngắn về kinh nghiệm, điểm mạnh và định hướng cá nhân."
+          />
+        </div>
+
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-700">Trạng thái hồ sơ</label>
+          <select
+            v-model="form.trang_thai"
+            class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
           >
-            Hủy
-          </button>
-          <button
-            class="rounded-2xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            :disabled="saving || !form.tieu_de_ho_so"
-            type="button"
-            @click="submitProfile"
-          >
-            {{ saving ? 'Đang lưu...' : editingProfileId ? 'Lưu thay đổi' : 'Tạo hồ sơ' }}
-          </button>
+            <option :value="1">Công khai</option>
+            <option :value="0">Ẩn</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="mb-2 block text-sm font-semibold text-slate-700">File CV (PDF/DOC/DOCX)</label>
+          <label class="flex min-h-[54px] cursor-pointer items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500 transition hover:border-[#2463eb] hover:bg-white hover:text-[#2463eb]">
+            <input class="hidden" type="file" accept=".pdf,.doc,.docx" @change="handleFileChange" />
+            {{ selectedFile ? selectedFile.name : editingProfileId ? 'Chọn file mới nếu muốn thay thế CV hiện tại' : 'Chọn file CV để upload' }}
+          </label>
         </div>
       </div>
-    </div>
+    </FormModalShell>
 
     <div
       v-if="parseResultModalOpen"

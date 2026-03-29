@@ -1,7 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { adminIndustryService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import FormModalShell from '@/components/FormModalShell.vue'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -28,6 +30,8 @@ const showModal = ref(false)
 const showDeleteModal = ref(false)
 const editingIndustry = ref(null)
 const deletingIndustry = ref(null)
+const saving = ref(false)
+const listSectionRef = ref(null)
 let searchDebounceTimer = null
 
 const formData = reactive({
@@ -50,6 +54,11 @@ const statusColors = {
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalIndustries.value / perPage.value)))
 const parentOptions = computed(() => industries.value.filter((item) => !item.danh_muc_cha_id))
+
+const scrollToListTop = async () => {
+  await nextTick()
+  listSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const normalizeIndustries = (response) => {
   const payload = response?.data
@@ -133,7 +142,13 @@ const openEditModal = (industry) => {
   showModal.value = true
 }
 
+const closeModal = () => {
+  if (saving.value) return
+  showModal.value = false
+}
+
 const submitForm = async () => {
+  saving.value = true
   try {
     const payload = {
       ten_nganh: formData.ten_nganh,
@@ -151,10 +166,12 @@ const submitForm = async () => {
       notify.success('Đã tạo ngành nghề')
     }
 
-    showModal.value = false
+    closeModal()
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể lưu ngành nghề'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -214,18 +231,21 @@ const resetFilters = async () => {
 const goToPage = async (page) => {
   currentPage.value = page
   await loadIndustries()
+  await scrollToListTop()
 }
 
 const goToPreviousPage = async () => {
   if (currentPage.value === 1) return
   currentPage.value -= 1
   await loadIndustries()
+  await scrollToListTop()
 }
 
 const goToNextPage = async () => {
   if (currentPage.value === totalPages.value) return
   currentPage.value += 1
   await loadIndustries()
+  await scrollToListTop()
 }
 
 onMounted(async () => {
@@ -301,7 +321,7 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <div ref="listSectionRef" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="flex flex-wrap items-center gap-3 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
       <div class="relative min-w-[260px] flex-1">
         <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
@@ -358,11 +378,11 @@ onBeforeUnmount(() => {
       <table class="w-full table-fixed text-left">
         <thead>
           <tr class="bg-slate-50 dark:bg-slate-800/50">
-            <th class="w-[38%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Ngành nghề</th>
+            <th class="w-[35%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Ngành nghề</th>
             <th class="w-[20%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Slug</th>
             <th class="w-[20%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">Danh mục cha</th>
-            <th class="w-[12%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-center">Hiển thị</th>
-            <th class="w-[10%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-right">Hành động</th>
+            <th class="w-[10%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-left">Hiển thị</th>
+            <th class="w-[15%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-center">Hành động</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -398,7 +418,7 @@ onBeforeUnmount(() => {
             <td class="px-6 py-5 text-sm text-slate-600 dark:text-slate-400">
               {{ industry.danh_muc_cha?.ten_nganh || 'Ngành gốc' }}
             </td>
-            <td class="px-6 py-5 text-center">
+            <td class="px-6 py-5 text-left">
               <span :class="['inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold', statusColors[industry.trang_thai]]">
                 {{ statusMap[industry.trang_thai] }}
               </span>
@@ -421,77 +441,89 @@ onBeforeUnmount(() => {
       </table>
     </div>
 
-    <div v-if="!loading && industries.length > 0" class="flex items-center justify-between border-t border-slate-100 px-6 py-4 dark:border-slate-800">
-      <p class="text-sm text-slate-500 dark:text-slate-400">
-        Hiển thị {{ (currentPage - 1) * perPage + 1 }} đến {{ Math.min(currentPage * perPage, totalIndustries) }} trên {{ totalIndustries }} ngành nghề
-      </p>
-      <div class="flex items-center gap-2">
-        <button @click="goToPreviousPage" :disabled="currentPage === 1" class="rounded-lg border border-slate-200 p-2 disabled:opacity-50 dark:border-slate-700">
-          <span class="material-symbols-outlined text-[18px]">chevron_left</span>
-        </button>
-        <button
-          v-for="page in totalPages"
-          :key="page"
-          @click="goToPage(page)"
-          :class="['rounded-lg px-3 py-1 text-sm font-medium', currentPage === page ? 'bg-[#2463eb] text-white' : 'text-slate-600 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800']"
-        >
-          {{ page }}
-        </button>
-        <button @click="goToNextPage" :disabled="currentPage === totalPages" class="rounded-lg border border-slate-200 p-2 disabled:opacity-50 dark:border-slate-700">
-          <span class="material-symbols-outlined text-[18px]">chevron_right</span>
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="!loading && industries.length > 0"
+      :summary="`Hiển thị ${industries.length} / ${totalIndustries} ngành nghề`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="goToPreviousPage"
+      @next="goToNextPage"
+    />
   </div>
 
-  <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-    <div class="w-full max-w-2xl rounded-2xl bg-white shadow-xl dark:bg-slate-900">
-      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-        <h3 class="text-lg font-semibold">{{ editingIndustry ? 'Chỉnh sửa ngành nghề' : 'Tạo ngành nghề mới' }}</h3>
-        <button @click="showModal = false" class="text-slate-400 hover:text-slate-600">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+  <FormModalShell
+    v-if="showModal"
+    eyebrow="Quản lý ngành nghề"
+    :title="editingIndustry ? 'Cập nhật ngành nghề' : 'Tạo ngành nghề mới'"
+    description="Giữ cấu trúc danh mục rõ ràng để việc lọc tin tuyển dụng và báo cáo dữ liệu chính xác hơn."
+    max-width-class="max-w-4xl"
+    :submit-label="editingIndustry ? 'Lưu thay đổi' : 'Tạo ngành nghề'"
+    :submit-loading-label="editingIndustry ? 'Đang cập nhật...' : 'Đang tạo...'"
+    :saving="saving"
+    @close="closeModal"
+    @submit="submitForm"
+  >
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Ngành nghề</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ formData.ten_nganh || 'Chưa nhập tên ngành' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ formData.icon || 'Chưa có icon' }}</p>
       </div>
-      <form @submit.prevent="submitForm" class="space-y-4 p-6">
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Tên ngành nghề</label>
-            <input v-model="formData.ten_nganh" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Danh mục cha</label>
-            <select v-model="formData.danh_muc_cha_id" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800">
-              <option value="">Ngành gốc</option>
-              <option v-for="industry in parentOptions.filter((item) => !editingIndustry || item.id !== editingIndustry.id)" :key="industry.id" :value="industry.id">
-                {{ industry.ten_nganh }}
-              </option>
-            </select>
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Icon</label>
-            <input v-model="formData.icon" type="text" placeholder="category" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-          <div class="md:col-span-2">
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Mô tả</label>
-            <textarea v-model="formData.mo_ta" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800"></textarea>
-          </div>
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Trạng thái</label>
-            <select v-model.number="formData.trang_thai" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800">
-              <option :value="1">Hiển thị</option>
-              <option :value="0">Ẩn</option>
-            </select>
-          </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Cấu trúc</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">
+          {{ formData.danh_muc_cha_id === '' ? 'Ngành gốc' : 'Ngành con' }}
+        </p>
+        <p class="mt-1 text-sm text-slate-500">
+          {{
+            formData.danh_muc_cha_id === ''
+              ? 'Hiển thị ở cấp danh mục chính.'
+              : parentOptions.find((item) => item.id === Number(formData.danh_muc_cha_id))?.ten_nganh || 'Thuộc danh mục cha đã chọn'
+          }}
+        </p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
+        <div class="mt-3">
+          <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
+            {{ statusMap[formData.trang_thai] }}
+          </span>
         </div>
-        <div class="flex justify-end gap-3 pt-2">
-          <button type="button" @click="showModal = false" class="rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Hủy</button>
-          <button type="submit" class="rounded-lg bg-[#2463eb] px-5 py-2 text-white transition-colors hover:bg-[#2463eb]/90">
-            {{ editingIndustry ? 'Lưu thay đổi' : 'Tạo ngành nghề' }}
-          </button>
-        </div>
-      </form>
+        <p class="mt-2 text-sm text-slate-500">Kiểm soát việc hiển thị danh mục trên giao diện người dùng.</p>
+      </div>
+    </template>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Tên ngành nghề</label>
+        <input v-model="formData.ten_nganh" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Danh mục cha</label>
+        <select v-model="formData.danh_muc_cha_id" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option value="">Ngành gốc</option>
+          <option v-for="industry in parentOptions.filter((item) => !editingIndustry || item.id !== editingIndustry.id)" :key="industry.id" :value="industry.id">
+            {{ industry.ten_nganh }}
+          </option>
+        </select>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Icon</label>
+        <input v-model="formData.icon" type="text" placeholder="category" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Mô tả</label>
+        <textarea v-model="formData.mo_ta" rows="5" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"></textarea>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Trạng thái</label>
+        <select v-model.number="formData.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option :value="1">Hiển thị</option>
+          <option :value="0">Ẩn</option>
+        </select>
+      </div>
     </div>
-  </div>
+  </FormModalShell>
 
   <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
     <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">

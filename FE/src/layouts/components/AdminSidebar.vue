@@ -1,4 +1,5 @@
 <script setup>
+import AppLogo from '@/components/AppLogo.vue'
 import { RouterLink } from 'vue-router'
 
 defineProps({
@@ -15,13 +16,12 @@ defineProps({
     :class="collapsed ? 'w-24' : 'w-64'"
   >
     <div class="flex items-center gap-3 p-6" :class="collapsed ? 'justify-center' : ''">
-      <div class="flex size-10 items-center justify-center rounded-2xl bg-[#2463eb] text-white shadow-lg shadow-[#2463eb]/20">
-        <span class="material-symbols-outlined">analytics</span>
-      </div>
-      <div v-if="!collapsed">
-        <h1 class="font-bold text-slate-900 dark:text-white leading-tight">AdminPanel</h1>
-        <p class="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Management Console</p>
-      </div>
+      <AppLogo
+        :show-text="!collapsed"
+        size="sm"
+        title="AI Recruitment"
+        subtitle="Management Console"
+      />
     </div>
     <nav class="flex-1 space-y-1 px-4">
       <RouterLink to="/admin" exact-active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Tổng quan' : ''">

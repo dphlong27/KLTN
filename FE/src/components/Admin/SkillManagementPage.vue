@@ -1,7 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { adminSkillService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import FormModalShell from '@/components/FormModalShell.vue'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -25,6 +27,8 @@ const showModal = ref(false)
 const showDeleteModal = ref(false)
 const editingSkill = ref(null)
 const deletingSkill = ref(null)
+const saving = ref(false)
+const listSectionRef = ref(null)
 let searchDebounceTimer = null
 
 const formData = reactive({
@@ -34,6 +38,15 @@ const formData = reactive({
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalSkills.value / perPage.value)))
+
+const scrollToListTop = async () => {
+  await nextTick()
+
+  listSectionRef.value?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+}
 
 const normalizeSkills = (response) => {
   const payload = response?.data
@@ -111,7 +124,13 @@ const openEditModal = (skill) => {
   showModal.value = true
 }
 
+const closeModal = () => {
+  if (saving.value) return
+  showModal.value = false
+}
+
 const submitForm = async () => {
+  saving.value = true
   try {
     const payload = {
       ten_ky_nang: formData.ten_ky_nang,
@@ -127,10 +146,12 @@ const submitForm = async () => {
       notify.success('Đã tạo kỹ năng')
     }
 
-    showModal.value = false
+    closeModal()
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể lưu kỹ năng'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -180,18 +201,21 @@ const resetFilters = async () => {
 const goToPage = async (page) => {
   currentPage.value = page
   await loadSkills()
+  await scrollToListTop()
 }
 
 const goToPreviousPage = async () => {
   if (currentPage.value === 1) return
   currentPage.value -= 1
   await loadSkills()
+  await scrollToListTop()
 }
 
 const goToNextPage = async () => {
   if (currentPage.value === totalPages.value) return
   currentPage.value += 1
   await loadSkills()
+  await scrollToListTop()
 }
 
 onMounted(async () => {
@@ -244,7 +268,7 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <div ref="listSectionRef" class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200 p-4 dark:border-slate-800">
       <div class="relative min-w-[260px] flex-1">
         <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
@@ -284,7 +308,7 @@ onBeforeUnmount(() => {
             <th class="w-[30%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Kỹ năng</th>
             <th class="w-[40%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mô tả</th>
             <th class="w-[15%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Icon</th>
-            <th class="w-[15%] px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">Hành động</th>
+            <th class="w-[15%] px-6 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Hành động</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -317,7 +341,7 @@ onBeforeUnmount(() => {
             <td class="px-6 py-4 text-sm text-slate-500">
               {{ skill.icon || 'Không có' }}
             </td>
-            <td class="px-6 py-4 text-right">
+            <td class="px-6 py-4 text-center">
               <button @click="openEditModal(skill)" class="text-slate-400 hover:text-[#2463eb]">
                 <span class="material-symbols-outlined text-[20px]">edit</span>
               </button>
@@ -330,57 +354,51 @@ onBeforeUnmount(() => {
       </table>
     </div>
 
-    <div v-if="!loading && skills.length > 0" class="flex items-center justify-between border-t border-slate-200 p-4 dark:border-slate-800">
-      <p class="text-sm font-medium text-slate-500">Hiển thị {{ (currentPage - 1) * perPage + 1 }}-{{ Math.min(currentPage * perPage, totalSkills) }} của {{ totalSkills }} kỹ năng</p>
-      <div class="flex items-center gap-2">
-        <button @click="goToPreviousPage" :disabled="currentPage === 1" class="flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 disabled:opacity-50 dark:border-slate-700">
-          <span class="material-symbols-outlined text-sm">chevron_left</span>
-        </button>
-        <button
-          v-for="page in totalPages"
-          :key="page"
-          @click="goToPage(page)"
-          :class="['flex size-8 items-center justify-center rounded-lg text-xs font-bold', currentPage === page ? 'bg-[#2463eb] text-white' : 'text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800']"
-        >
-          {{ page }}
-        </button>
-        <button @click="goToNextPage" :disabled="currentPage === totalPages" class="flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-400 disabled:opacity-50 dark:border-slate-700">
-          <span class="material-symbols-outlined text-sm">chevron_right</span>
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="!loading && skills.length > 0"
+      :summary="`Hiển thị ${Math.min(skills.length, perPage)} / ${totalSkills} kỹ năng`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="goToPreviousPage"
+      @next="goToNextPage"
+    />
   </div>
 
-  <div v-if="showModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-    <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl dark:bg-slate-900">
-      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-        <h3 class="text-lg font-semibold">{{ editingSkill ? 'Chỉnh sửa kỹ năng' : 'Tạo kỹ năng mới' }}</h3>
-        <button @click="showModal = false" class="text-slate-400 hover:text-slate-600">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+  <FormModalShell
+    v-if="showModal"
+    eyebrow="Quản lý kỹ năng"
+    :title="editingSkill ? 'Cập nhật kỹ năng' : 'Tạo kỹ năng mới'"
+    description="Chuẩn hóa tên, icon và mô tả để danh mục kỹ năng nhất quán trên toàn hệ thống."
+    max-width-class="max-w-3xl"
+    :submit-label="editingSkill ? 'Lưu thay đổi' : 'Tạo kỹ năng'"
+    :submit-loading-label="editingSkill ? 'Đang cập nhật...' : 'Đang tạo...'"
+    :saving="saving"
+    @close="closeModal"
+    @submit="submitForm"
+  >
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Kỹ năng</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ formData.ten_ky_nang || 'Chưa nhập tên kỹ năng' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ formData.icon || 'Chưa có icon' }}</p>
       </div>
-      <form @submit.prevent="submitForm" class="space-y-4 p-6">
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Tên kỹ năng</label>
-          <input v-model="formData.ten_ky_nang" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Icon</label>
-          <input v-model="formData.icon" type="text" placeholder="code" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-        </div>
-        <div>
-          <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Mô tả</label>
-          <textarea v-model="formData.mo_ta" rows="4" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800"></textarea>
-        </div>
-        <div class="flex justify-end gap-3 pt-2">
-          <button type="button" @click="showModal = false" class="rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">Hủy</button>
-          <button type="submit" class="rounded-lg bg-[#2463eb] px-5 py-2 text-white transition-colors hover:bg-[#2463eb]/90">
-            {{ editingSkill ? 'Lưu thay đổi' : 'Tạo kỹ năng' }}
-          </button>
-        </div>
-      </form>
+    </template>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Tên kỹ năng</label>
+        <input v-model="formData.ten_ky_nang" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Icon</label>
+        <input v-model="formData.icon" type="text" placeholder="code" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Mô tả</label>
+        <textarea v-model="formData.mo_ta" rows="5" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"></textarea>
+      </div>
     </div>
-  </div>
+  </FormModalShell>
 
   <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
     <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">

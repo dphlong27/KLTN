@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { applicationService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN, formatDateVN } from '@/utils/dateTime'
+import FormModalShell from '@/components/FormModalShell.vue'
 
 const notify = useNotify()
 
@@ -549,88 +550,71 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div
+    <FormModalShell
       v-if="editModalOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
-      @click.self="closeEditModal"
+      eyebrow="Cập nhật ứng tuyển"
+      :title="editableApplication?.tin_tuyen_dung?.tieu_de || 'Cập nhật hồ sơ ứng tuyển'"
+      description="Bạn chỉ có thể đổi CV khi đơn vẫn đang chờ duyệt."
+      max-width-class="max-w-3xl"
+      submit-label="Lưu thay đổi"
+      submit-loading-label="Đang cập nhật..."
+      :saving="updating || loadingProfiles"
+      @close="closeEditModal"
+      @submit="submitApplicationUpdate"
     >
-      <div class="w-full max-w-2xl rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950">
-        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
+      <template #summary>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 sm:col-span-2">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Đơn ứng tuyển</p>
+          <p class="mt-2 text-base font-semibold text-slate-900">{{ editableApplication?.tin_tuyen_dung?.tieu_de || 'Chưa có tiêu đề' }}</p>
+          <p class="mt-1 text-sm text-slate-500">{{ editableApplication?.tin_tuyen_dung?.cong_ty?.ten_cong_ty || 'Chưa có công ty' }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white p-4">
+          <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Hồ sơ thay thế</p>
+          <p class="mt-2 text-base font-semibold text-slate-900">{{ selectedProfile?.tieu_de_ho_so || 'Chưa chọn hồ sơ' }}</p>
+          <p class="mt-1 text-sm text-slate-500">{{ selectedProfile ? `Kinh nghiệm ${selectedProfile.kinh_nghiem_nam || 0} năm` : 'Chọn hồ sơ để tiếp tục' }}</p>
+        </div>
+      </template>
+
+      <div class="space-y-5">
+        <div v-if="loadingProfiles" class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500">
+          Đang tải danh sách hồ sơ...
+        </div>
+
+        <template v-else>
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Cập nhật ứng tuyển</p>
-            <h3 class="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{{ editableApplication?.tin_tuyen_dung?.tieu_de }}</h3>
-            <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Bạn chỉ có thể đổi CV khi đơn vẫn đang chờ duyệt.
+            <label class="mb-2 block text-sm font-semibold text-slate-700">Chọn hồ sơ thay thế</label>
+            <select
+              v-model="selectedProfileId"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+            >
+              <option value="" disabled>Chọn hồ sơ của bạn</option>
+              <option v-for="profile in profiles" :key="profile.id" :value="String(profile.id)">
+                {{ profile.tieu_de_ho_so || `Hồ sơ #${profile.id}` }}
+              </option>
+            </select>
+          </div>
+
+          <div v-if="selectedProfile" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600">
+            <p class="font-semibold text-slate-800">{{ selectedProfile.tieu_de_ho_so || `Hồ sơ #${selectedProfile.id}` }}</p>
+            <p class="mt-1">
+              Kinh nghiệm: {{ selectedProfile.kinh_nghiem_nam || 0 }} năm
+              <span v-if="selectedProfile.vi_tri_mong_muon">• Mục tiêu: {{ selectedProfile.vi_tri_mong_muon }}</span>
             </p>
           </div>
-          <button
-            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200"
-            type="button"
-            @click="closeEditModal"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
 
-        <div class="space-y-5 px-6 py-6">
-          <div v-if="loadingProfiles" class="rounded-2xl bg-slate-50 px-4 py-5 text-sm text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-            Đang tải danh sách hồ sơ...
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700">Thư xin việc hiện tại</label>
+            <textarea
+              v-model="coverLetter"
+              rows="5"
+              maxlength="5000"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+              placeholder="Bạn có thể chỉnh lại thư xin việc để phù hợp với hồ sơ mới."
+            />
+            <div class="mt-2 text-right text-xs text-slate-400">{{ coverLetter.length }}/5000</div>
           </div>
-
-          <template v-else>
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Chọn hồ sơ thay thế</label>
-              <select
-                v-model="selectedProfileId"
-                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-blue-500/20"
-              >
-                <option value="" disabled>Chọn hồ sơ của bạn</option>
-                <option v-for="profile in profiles" :key="profile.id" :value="String(profile.id)">
-                  {{ profile.tieu_de_ho_so || `Hồ sơ #${profile.id}` }}
-                </option>
-              </select>
-            </div>
-
-            <div v-if="selectedProfile" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600 dark:bg-slate-900 dark:text-slate-400">
-              <p class="font-semibold text-slate-800 dark:text-slate-200">{{ selectedProfile.tieu_de_ho_so || `Hồ sơ #${selectedProfile.id}` }}</p>
-              <p class="mt-1">
-                Kinh nghiệm: {{ selectedProfile.kinh_nghiem_nam || 0 }} năm
-                <span v-if="selectedProfile.vi_tri_mong_muon">• Mục tiêu: {{ selectedProfile.vi_tri_mong_muon }}</span>
-              </p>
-            </div>
-
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">Thư xin việc hiện tại</label>
-              <textarea
-                v-model="coverLetter"
-                rows="5"
-                maxlength="5000"
-                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:focus:ring-blue-500/20"
-                placeholder="Bạn có thể chỉnh lại thư xin việc để phù hợp với hồ sơ mới."
-              />
-              <div class="mt-2 text-right text-xs text-slate-400 dark:text-slate-500">{{ coverLetter.length }}/5000</div>
-            </div>
-          </template>
-        </div>
-
-        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 dark:border-slate-800 sm:flex-row sm:justify-end">
-          <button
-            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
-            type="button"
-            @click="closeEditModal"
-          >
-            Hủy
-          </button>
-          <button
-            class="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
-            :disabled="!selectedProfileId || updating || loadingProfiles"
-            type="button"
-            @click="submitApplicationUpdate"
-          >
-            {{ updating ? 'Đang cập nhật...' : 'Lưu thay đổi' }}
-          </button>
-        </div>
+        </template>
       </div>
-    </div>
+    </FormModalShell>
   </div>
 </template>

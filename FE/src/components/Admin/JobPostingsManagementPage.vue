@@ -1,7 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { adminJobPostingService, companyService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import FormModalShell from '@/components/FormModalShell.vue'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -27,6 +29,8 @@ const showEditModal = ref(false)
 const showDeleteModal = ref(false)
 const editingJob = ref(null)
 const deletingJob = ref(null)
+const saving = ref(false)
+const listSectionRef = ref(null)
 let searchDebounceTimer = null
 
 const formData = reactive({
@@ -62,6 +66,11 @@ const statusColors = {
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalJobs.value / perPage.value)))
+
+const scrollToListTop = async () => {
+  await nextTick()
+  listSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const formatCurrency = (value) => {
   if (value === null || value === undefined || value === '') return 'Thỏa thuận'
@@ -194,9 +203,16 @@ const openEditModal = (job) => {
   showEditModal.value = true
 }
 
+const closeEditModal = () => {
+  if (saving.value) return
+  showEditModal.value = false
+  editingJob.value = null
+}
+
 const submitEdit = async () => {
   if (!editingJob.value) return
 
+  saving.value = true
   try {
     await adminJobPostingService.updateJob(editingJob.value.id, {
       ...formData,
@@ -208,11 +224,13 @@ const submitEdit = async () => {
       hinh_thuc_lam_viec: formData.hinh_thuc_lam_viec || null,
     })
 
-    showEditModal.value = false
+    closeEditModal()
     notify.success('Đã cập nhật tin tuyển dụng')
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể cập nhật tin tuyển dụng'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -274,18 +292,21 @@ const resetFilters = async () => {
 const goToPage = async (page) => {
   currentPage.value = page
   await loadJobs()
+  await scrollToListTop()
 }
 
 const goToPreviousPage = async () => {
   if (currentPage.value === 1) return
   currentPage.value -= 1
   await loadJobs()
+  await scrollToListTop()
 }
 
 const goToNextPage = async () => {
   if (currentPage.value === totalPages.value) return
   currentPage.value += 1
   await loadJobs()
+  await scrollToListTop()
 }
 
 onMounted(async () => {
@@ -402,17 +423,17 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <div ref="listSectionRef" class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="overflow-x-auto">
       <table class="w-full table-fixed text-left">
         <thead class="border-b border-slate-200 bg-slate-50/80 dark:border-slate-800 dark:bg-slate-800/50">
           <tr>
-            <th class="w-[38%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Tin tuyển dụng</th>
-            <th class="w-[19%] px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Công ty</th>
-            <th class="w-[11%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Lương</th>
-            <th class="w-[10%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Ngày hết hạn</th>
-            <th class="w-[12%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái</th>
-            <th class="w-[10%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Hành động</th>
+            <th class="w-[32%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Tin tuyển dụng</th>
+            <th class="w-[18%] px-5 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Công ty</th>
+            <th class="w-[10%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Lương</th>
+            <th class="w-[15%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Ngày hết hạn</th>
+            <th class="w-[10%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái</th>
+            <th class="w-[15%] px-4 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Hành động</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -430,7 +451,7 @@ onBeforeUnmount(() => {
             </td>
           </tr>
 
-          <tr v-for="job in jobs" :key="job.id" class="align-top hover:bg-slate-50/60 dark:hover:bg-slate-800/30">
+          <tr v-for="job in jobs" :key="job.id" class="hover:bg-slate-50/60 dark:hover:bg-slate-800/30">
             <td class="px-6 py-5 pr-4">
               <div class="space-y-2">
                 <div class="text-sm font-bold text-slate-900 dark:text-slate-100">{{ job.tieu_de }}</div>
@@ -489,123 +510,100 @@ onBeforeUnmount(() => {
       </table>
     </div>
 
-    <div v-if="!loading && jobs.length > 0" class="flex items-center justify-between border-t border-slate-200 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-800/40">
-      <div class="text-sm text-slate-500">
-        Hiển thị
-        <span class="font-medium text-slate-900 dark:text-slate-100">{{ (currentPage - 1) * perPage + 1 }}</span>
-        đến
-        <span class="font-medium text-slate-900 dark:text-slate-100">{{ Math.min(currentPage * perPage, totalJobs) }}</span>
-        trên
-        <span class="font-medium text-slate-900 dark:text-slate-100">{{ totalJobs }}</span>
-        tin tuyển dụng
-      </div>
-      <div class="flex items-center gap-2">
-        <button
-          @click="goToPreviousPage"
-          :disabled="currentPage === 1"
-          class="rounded-lg border border-slate-200 p-2 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-700"
-        >
-          <span class="material-symbols-outlined">chevron_left</span>
-        </button>
-        <button
-          v-for="page in totalPages"
-          :key="page"
-          @click="goToPage(page)"
-          :class="['h-8 w-8 rounded-lg text-sm font-medium transition-colors', currentPage === page ? 'bg-[#2463eb] text-white' : 'hover:bg-slate-100 dark:hover:bg-slate-700']"
-        >
-          {{ page }}
-        </button>
-        <button
-          @click="goToNextPage"
-          :disabled="currentPage === totalPages"
-          class="rounded-lg border border-slate-200 p-2 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:hover:bg-slate-700"
-        >
-          <span class="material-symbols-outlined">chevron_right</span>
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="!loading && jobs.length > 0"
+      :summary="`Hiển thị ${jobs.length} / ${totalJobs} tin tuyển dụng`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="goToPreviousPage"
+      @next="goToNextPage"
+    />
   </div>
 
-  <div v-if="showEditModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-    <div class="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-xl dark:bg-slate-900">
-      <div class="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-        <h3 class="text-lg font-semibold">Chỉnh sửa tin tuyển dụng</h3>
-        <button @click="showEditModal = false" class="text-slate-400 hover:text-slate-600">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+  <FormModalShell
+    v-if="showEditModal"
+    eyebrow="Quản lý tin tuyển dụng"
+    title="Cập nhật tin tuyển dụng"
+    description="Điều chỉnh nội dung tin để dữ liệu tuyển dụng, hạn nộp và trạng thái hiển thị luôn chính xác."
+    max-width-class="max-w-4xl"
+    submit-label="Lưu thay đổi"
+    submit-loading-label="Đang cập nhật..."
+    :saving="saving"
+    @close="closeEditModal"
+    @submit="submitEdit"
+  >
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Tin tuyển dụng</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ formData.tieu_de || 'Chưa nhập tiêu đề' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ editingJob?.cong_ty?.ten_cong_ty || 'Chưa có công ty' }}</p>
       </div>
-
-      <form @submit.prevent="submitEdit" class="space-y-4 p-6">
-        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div class="md:col-span-2">
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Tiêu đề</label>
-            <input v-model="formData.tieu_de" type="text" required class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Địa điểm</label>
-            <input v-model="formData.dia_diem_lam_viec" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Hình thức</label>
-            <select v-model="formData.hinh_thuc_lam_viec" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800">
-              <option v-for="option in workModeOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Cấp bậc</label>
-            <input v-model="formData.cap_bac" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Số lượng tuyển</label>
-            <input v-model="formData.so_luong_tuyen" type="number" min="1" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Mức lương</label>
-            <input v-model="formData.muc_luong" type="number" min="0" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Kinh nghiệm yêu cầu</label>
-            <input v-model="formData.kinh_nghiem_yeu_cau" type="text" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Ngày giờ hết hạn</label>
-            <input v-model="formData.ngay_het_han" type="datetime-local" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800" />
-          </div>
-
-          <div>
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Trạng thái</label>
-            <select v-model.number="formData.trang_thai" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800">
-              <option :value="1">Đang hoạt động</option>
-              <option :value="0">Tạm ngưng</option>
-            </select>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">Mô tả công việc</label>
-            <textarea v-model="formData.mo_ta_cong_viec" rows="6" class="w-full rounded-lg border border-slate-300 px-3 py-2 outline-none focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-800"></textarea>
-          </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Vận hành</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ formData.dia_diem_lam_viec || 'Chưa có địa điểm' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ formData.hinh_thuc_lam_viec || 'Chưa chọn hình thức' }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
+        <div class="mt-3">
+          <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
+            {{ statusMap[formData.trang_thai] }}
+          </span>
         </div>
+        <p class="mt-2 text-sm text-slate-500">Thay đổi sẽ ảnh hưởng trực tiếp đến việc ứng viên nhìn thấy tin này.</p>
+      </div>
+    </template>
 
-        <div class="flex justify-end gap-3 pt-4">
-          <button type="button" @click="showEditModal = false" class="rounded-lg border border-slate-300 px-4 py-2 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
-            Hủy
-          </button>
-          <button type="submit" class="rounded-lg bg-[#2463eb] px-5 py-2 text-white transition-colors hover:bg-[#2463eb]/90">
-            Lưu thay đổi
-          </button>
-        </div>
-      </form>
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Tiêu đề</label>
+        <input v-model="formData.tieu_de" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Địa điểm</label>
+        <input v-model="formData.dia_diem_lam_viec" type="text" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Hình thức</label>
+        <select v-model="formData.hinh_thuc_lam_viec" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option v-for="option in workModeOptions" :key="option.value" :value="option.value">
+            {{ option.label }}
+          </option>
+        </select>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Cấp bậc</label>
+        <input v-model="formData.cap_bac" type="text" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Số lượng tuyển</label>
+        <input v-model="formData.so_luong_tuyen" type="number" min="1" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Mức lương</label>
+        <input v-model="formData.muc_luong" type="number" min="0" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Kinh nghiệm yêu cầu</label>
+        <input v-model="formData.kinh_nghiem_yeu_cau" type="text" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Ngày giờ hết hạn</label>
+        <input v-model="formData.ngay_het_han" type="datetime-local" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Trạng thái</label>
+        <select v-model.number="formData.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option :value="1">Đang hoạt động</option>
+          <option :value="0">Tạm ngưng</option>
+        </select>
+      </div>
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Mô tả công việc</label>
+        <textarea v-model="formData.mo_ta_cong_viec" rows="6" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"></textarea>
+      </div>
     </div>
-  </div>
+  </FormModalShell>
 
   <div v-if="showDeleteModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
     <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-slate-900">

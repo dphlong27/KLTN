@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { adminApplicationService, companyService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN } from '@/utils/dateTime'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -28,8 +29,14 @@ const stats = ref({
 
 const showDetailModal = ref(false)
 const selectedApplication = ref(null)
+const listSectionRef = ref(null)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalApplications.value / perPage.value)))
+
+const scrollToListTop = async () => {
+  await nextTick()
+  listSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const statusOptions = [
   { value: '', label: 'Tất cả trạng thái' },
@@ -163,6 +170,7 @@ const changePage = async (page) => {
   if (page < 1 || page > totalPages.value || page === currentPage.value) return
   currentPage.value = page
   await loadApplications()
+  await scrollToListTop()
 }
 
 const openDetail = (application) => {
@@ -206,7 +214,7 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <div ref="listSectionRef" class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="grid grid-cols-1 gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800 xl:grid-cols-[280px_220px_180px_auto]">
       <label class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
         <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Công ty</span>
@@ -328,32 +336,14 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-if="totalApplications > perPage" class="flex flex-col gap-3 border-t border-slate-200 px-6 py-5 text-sm dark:border-slate-800 md:flex-row md:items-center md:justify-between">
-      <p class="text-slate-500 dark:text-slate-400">
-        Hiển thị {{ applications.length }} / {{ totalApplications }} đơn ứng tuyển
-      </p>
-      <div class="flex items-center gap-2">
-        <button
-          class="rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          :disabled="currentPage === 1"
-          type="button"
-          @click="changePage(currentPage - 1)"
-        >
-          Trước
-        </button>
-        <span class="rounded-lg bg-slate-100 px-3 py-2 font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-          {{ currentPage }} / {{ totalPages }}
-        </span>
-        <button
-          class="rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          :disabled="currentPage === totalPages"
-          type="button"
-          @click="changePage(currentPage + 1)"
-        >
-          Sau
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="totalApplications > perPage"
+      :summary="`Hiển thị ${applications.length} / ${totalApplications} đơn ứng tuyển`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="changePage(currentPage - 1)"
+      @next="changePage(currentPage + 1)"
+    />
   </div>
 
   <div

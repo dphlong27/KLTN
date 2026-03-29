@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { adminMatchingService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN } from '@/utils/dateTime'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -19,10 +20,16 @@ const maxScore = ref('')
 
 const showDetailModal = ref(false)
 const selectedRecord = ref(null)
+const listSectionRef = ref(null)
 
 const modelStats = ref([])
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalRecords.value / perPage.value)))
+
+const scrollToListTop = async () => {
+  await nextTick()
+  listSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const modelOptions = computed(() => {
   const set = new Set(modelStats.value.map((item) => item.model_version).filter(Boolean))
@@ -124,6 +131,7 @@ const changePage = async (page) => {
   if (page < 1 || page > totalPages.value || page === currentPage.value) return
   currentPage.value = page
   await loadMatchings()
+  await scrollToListTop()
 }
 
 const openDetail = (record) => {
@@ -167,7 +175,7 @@ onMounted(async () => {
     </div>
   </div>
 
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <div ref="listSectionRef" class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="grid grid-cols-1 gap-4 border-b border-slate-200 px-6 py-5 dark:border-slate-800 xl:grid-cols-[260px_180px_180px_180px_auto]">
       <label class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
         <span class="mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-400">Model</span>
@@ -301,30 +309,14 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div
-      v-if="!loading && records.length && totalPages > 1"
-      class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-4 text-sm dark:border-slate-800"
-    >
-      <p class="text-slate-500">Trang {{ currentPage }} / {{ totalPages }}</p>
-      <div class="flex items-center gap-2">
-        <button
-          class="rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          :disabled="currentPage === 1"
-          type="button"
-          @click="changePage(currentPage - 1)"
-        >
-          Trước
-        </button>
-        <button
-          class="rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          :disabled="currentPage === totalPages"
-          type="button"
-          @click="changePage(currentPage + 1)"
-        >
-          Sau
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="!loading && records.length"
+      :summary="`Hiển thị ${records.length} / ${totalRecords} kết quả matching`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="changePage(currentPage - 1)"
+      @next="changePage(currentPage + 1)"
+    />
   </div>
 
   <div

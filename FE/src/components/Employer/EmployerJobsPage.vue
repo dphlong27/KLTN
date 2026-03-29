@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { employerJobService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import FormModalShell from '@/components/FormModalShell.vue'
 
 const notify = useNotify()
 
@@ -460,12 +461,12 @@ watch(() => filters.search, () => {
           <table class="w-full border-collapse text-left">
             <thead>
               <tr class="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-800/50">
-                <th class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Tiêu đề</th>
-                <th class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Ngành nghề</th>
-                <th class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mức lương</th>
-                <th class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái</th>
-                <th class="px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Hết hạn</th>
-                <th class="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-slate-500">Thao tác</th>
+                <th class="w-[18%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Tiêu đề</th>
+                <th class="w-[20%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Ngành nghề</th>
+                <th class="w-[13%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Mức lương</th>
+                <th class="w-[18%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Trạng thái</th>
+                <th class="w-[20%] px-6 py-4 text-xs font-bold uppercase tracking-wider text-slate-500">Hết hạn</th>
+                <th class="w-[12%] px-6 py-4 text-center text-xs font-bold uppercase tracking-wider text-slate-500">Thao tác</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -588,126 +589,128 @@ watch(() => filters.search, () => {
       </div>
     </template>
 
-  <div
+  <FormModalShell
     v-if="showModal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm"
-    @click.self="closeModal"
+    eyebrow="Quản lý tuyển dụng"
+    :title="isEditing ? 'Cập nhật tin tuyển dụng' : 'Tạo tin tuyển dụng mới'"
+    description="Giữ nội dung tin tuyển dụng rõ ràng để đội ngũ dễ vận hành và ứng viên hiểu đúng nhu cầu tuyển."
+    max-width-class="max-w-4xl"
+    :submit-label="isEditing ? 'Lưu thay đổi' : 'Tạo tin tuyển dụng'"
+    :submit-loading-label="isEditing ? 'Đang cập nhật...' : 'Đang tạo...'"
+    :saving="saving"
+    @close="closeModal"
+    @submit="submitJobForm"
   >
-      <div class="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-        <div class="flex items-start justify-between gap-4">
-          <div>
-            <h2 class="text-2xl font-black text-white">{{ isEditing ? 'Cập nhật tin tuyển dụng' : 'Tạo tin tuyển dụng mới' }}</h2>
-            <p class="mt-1 text-sm text-slate-400">Giữ phong cách cũ nhưng nối trực tiếp vào dữ liệu thật của hệ thống.</p>
-          </div>
-          <button class="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white" type="button" @click="closeModal">
-            <span class="material-symbols-outlined">close</span>
-          </button>
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Tin tuyển dụng</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ jobForm.tieu_de || 'Chưa nhập tiêu đề' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ jobForm.dia_diem_lam_viec || 'Chưa có địa điểm' }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Hình thức</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ jobForm.hinh_thuc_lam_viec || 'Chưa chọn hình thức' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ jobForm.cap_bac || 'Chưa có cấp bậc' }}</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
+        <div class="mt-3">
+          <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-semibold text-slate-700">
+            {{ statusLabel(jobForm.trang_thai) }}
+          </span>
         </div>
+        <p class="mt-2 text-sm text-slate-500">Áp dụng ngay khi bạn lưu thay đổi.</p>
+      </div>
+    </template>
 
-        <div class="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
-          <label class="block md:col-span-2">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Tiêu đề tin tuyển dụng</span>
-            <input v-model="jobForm.tieu_de" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" type="text">
-          </label>
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+      <label class="block md:col-span-2">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Tiêu đề tin tuyển dụng</span>
+        <input v-model="jobForm.tieu_de" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" type="text">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Địa điểm làm việc</span>
-            <input v-model="jobForm.dia_diem_lam_viec" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" type="text">
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Địa điểm làm việc</span>
+        <input v-model="jobForm.dia_diem_lam_viec" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" type="text">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Hình thức làm việc</span>
-            <select v-model="jobForm.hinh_thuc_lam_viec" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]">
-              <option value="Toàn thời gian">Toàn thời gian</option>
-              <option value="Bán thời gian">Bán thời gian</option>
-              <option value="Thực tập">Thực tập</option>
-              <option value="Freelance">Freelance</option>
-              <option value="Remote">Remote</option>
-            </select>
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Hình thức làm việc</span>
+        <select v-model="jobForm.hinh_thuc_lam_viec" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option value="Toàn thời gian">Toàn thời gian</option>
+          <option value="Bán thời gian">Bán thời gian</option>
+          <option value="Thực tập">Thực tập</option>
+          <option value="Freelance">Freelance</option>
+          <option value="Remote">Remote</option>
+        </select>
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Cấp bậc</span>
-            <input v-model="jobForm.cap_bac" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" placeholder="Junior / Senior / Manager" type="text">
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Cấp bậc</span>
+        <input v-model="jobForm.cap_bac" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Junior / Senior / Manager" type="text">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Kinh nghiệm yêu cầu</span>
-            <input v-model="jobForm.kinh_nghiem_yeu_cau" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" placeholder="Ví dụ: 2 năm" type="text">
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Kinh nghiệm yêu cầu</span>
+        <input v-model="jobForm.kinh_nghiem_yeu_cau" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" placeholder="Ví dụ: 2 năm" type="text">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Số lượng tuyển</span>
-            <input v-model.number="jobForm.so_luong_tuyen" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" min="1" type="number">
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Số lượng tuyển</span>
+        <input v-model.number="jobForm.so_luong_tuyen" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" min="1" type="number">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Mức lương (VND)</span>
-            <input v-model="jobForm.muc_luong" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" min="0" placeholder="18000000" type="number">
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Mức lương (VND)</span>
+        <input v-model="jobForm.muc_luong" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" min="0" placeholder="18000000" type="number">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Ngày giờ hết hạn</span>
-            <input v-model="jobForm.ngay_het_han" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" type="datetime-local">
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Ngày giờ hết hạn</span>
+        <input v-model="jobForm.ngay_het_han" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" type="datetime-local">
+      </label>
 
-          <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Trạng thái ban đầu</span>
-            <select v-model="jobForm.trang_thai" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]">
-              <option :value="1">Đang hoạt động</option>
-              <option :value="0">Tạm ngưng</option>
-            </select>
-          </label>
+      <label class="block">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Trạng thái ban đầu</span>
+        <select v-model="jobForm.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option :value="1">Đang hoạt động</option>
+          <option :value="0">Tạm ngưng</option>
+        </select>
+      </label>
 
-          <div class="md:col-span-2">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Ngành nghề</span>
-            <div class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 p-3 sm:grid-cols-2">
-              <label
-                v-for="industry in industries"
-                :key="industry.id"
-                class="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-slate-300 transition hover:bg-slate-800"
-              >
-                <input
-                  :value="industry.id"
-                  :checked="jobForm.nganh_nghes.includes(industry.id)"
-                  class="accent-[#2463eb]"
-                  type="checkbox"
-                  @change="
-                    $event.target.checked
-                      ? jobForm.nganh_nghes.push(industry.id)
-                      : jobForm.nganh_nghes = jobForm.nganh_nghes.filter((id) => id !== industry.id)
-                  "
-                >
-                {{ industry.ten_nganh }}
-              </label>
-            </div>
-          </div>
-
-          <label class="block md:col-span-2">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Mô tả công việc</span>
-            <textarea
-              v-model="jobForm.mo_ta_cong_viec"
-              class="min-h-[180px] w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-[#2463eb]"
-            />
-          </label>
-        </div>
-
-        <div class="mt-6 flex justify-end gap-3">
-          <button class="rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800" type="button" @click="closeModal">
-            Hủy
-          </button>
-          <button
-            class="rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="saving"
-            type="button"
-            @click="submitJobForm"
+      <div class="md:col-span-2">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Ngành nghề</span>
+        <div class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2">
+          <label
+            v-for="industry in industries"
+            :key="industry.id"
+            class="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm text-slate-700 transition hover:bg-white"
           >
-            {{ saving ? 'Đang lưu...' : isEditing ? 'Lưu thay đổi' : 'Tạo tin tuyển dụng' }}
-          </button>
+            <input
+              :value="industry.id"
+              :checked="jobForm.nganh_nghes.includes(industry.id)"
+              class="accent-[#2463eb]"
+              type="checkbox"
+              @change="
+                $event.target.checked
+                  ? jobForm.nganh_nghes.push(industry.id)
+                  : jobForm.nganh_nghes = jobForm.nganh_nghes.filter((id) => id !== industry.id)
+              "
+            >
+            {{ industry.ten_nganh }}
+          </label>
         </div>
       </div>
+
+      <label class="block md:col-span-2">
+        <span class="mb-2 block text-sm font-semibold text-slate-700">Mô tả công việc</span>
+        <textarea
+          v-model="jobForm.mo_ta_cong_viec"
+          class="min-h-[180px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base leading-7 text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20"
+        />
+      </label>
     </div>
-  </div>
+  </FormModalShell>
 
   <div
     v-if="deleteTarget"
@@ -753,4 +756,5 @@ watch(() => filters.search, () => {
       </div>
     </div>
   </div>
+</div>
 </template>

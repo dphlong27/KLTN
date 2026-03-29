@@ -1,4 +1,5 @@
 <script setup>
+import AppLogo from '@/components/AppLogo.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
@@ -87,11 +88,7 @@ const handleLogout = async () => {
   <header class="sticky top-0 z-50 w-full border-b border-slate-200/80 bg-white/85 backdrop-blur-md dark:border-slate-800 dark:bg-[#111621]/85">
     <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
       <RouterLink to="/" class="flex items-center gap-3 text-[#2463eb]">
-        <span class="material-symbols-outlined text-3xl font-bold">rocket_launch</span>
-        <div>
-          <h2 class="text-slate-900 dark:text-white text-xl font-bold tracking-tight">AI Recruitment</h2>
-          <p class="hidden text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400 sm:block">Career Platform</p>
-        </div>
+        <AppLogo subtitle="Career Intelligence Platform" />
       </RouterLink>
       <nav class="hidden lg:flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-2 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/80">
         <RouterLink to="/" class="rounded-full px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-[#2463eb] dark:text-slate-300 dark:hover:bg-slate-800">Trang chủ</RouterLink>

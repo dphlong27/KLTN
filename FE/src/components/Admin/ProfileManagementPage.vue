@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { adminProfileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN } from '@/utils/dateTime'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -30,6 +31,7 @@ const showArchiveModal = ref(false)
 const showForceDeleteModal = ref(false)
 const deletingProfile = ref(null)
 const forceDeletingProfile = ref(null)
+const listSectionRef = ref(null)
 let searchDebounceTimer = null
 
 const stats = reactive({
@@ -60,6 +62,11 @@ const sortOptions = [
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalProfiles.value / perPage.value)))
 const isArchivedTab = computed(() => activeTab.value === ARCHIVED_TAB)
+
+const scrollToListTop = async () => {
+  await nextTick()
+  listSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
 
 const summaryCards = computed(() => [
   {
@@ -215,12 +222,14 @@ const switchTab = async (tab) => {
   activeTab.value = tab
   currentPage.value = 1
   await loadProfiles()
+  await scrollToListTop()
 }
 
 const changePage = async (page) => {
   if (page < 1 || page > totalPages.value || page === currentPage.value) return
   currentPage.value = page
   await loadProfiles()
+  await scrollToListTop()
 }
 
 const openDetailModal = async (profileId) => {
@@ -348,7 +357,7 @@ onBeforeUnmount(() => {
     </span>
   </div>
 
-  <div class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+  <div ref="listSectionRef" class="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
     <div class="border-b border-slate-200 px-6 py-4 dark:border-slate-800">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex flex-wrap gap-2">
@@ -599,30 +608,14 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div
-      v-if="!loading && profiles.length && totalPages > 1"
-      class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-6 py-4 text-sm dark:border-slate-800"
-    >
-      <p class="text-slate-500">Trang {{ currentPage }} / {{ totalPages }}</p>
-      <div class="flex items-center gap-2">
-        <button
-          class="rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          :disabled="currentPage === 1"
-          type="button"
-          @click="changePage(currentPage - 1)"
-        >
-          Trước
-        </button>
-        <button
-          class="rounded-lg border border-slate-200 px-3 py-2 font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-          :disabled="currentPage === totalPages"
-          type="button"
-          @click="changePage(currentPage + 1)"
-        >
-          Sau
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="!loading && profiles.length"
+      :summary="`Hiển thị ${profiles.length} / ${totalProfiles} hồ sơ ứng viên`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="changePage(currentPage - 1)"
+      @next="changePage(currentPage + 1)"
+    />
   </div>
 
   <div

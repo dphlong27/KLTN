@@ -1,7 +1,9 @@
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
 import { userService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import FormModalShell from '@/components/FormModalShell.vue'
+import AdminPaginationBar from '@/components/Admin/AdminPaginationBar.vue'
 
 const notify = useNotify()
 
@@ -31,6 +33,8 @@ const showModal = ref(false)
 const showDeleteModal = ref(false)
 const editingUser = ref(null)
 const deletingUser = ref(null)
+const saving = ref(false)
+const listSectionRef = ref(null)
 let searchDebounceTimer = null
 
 // Form data
@@ -57,6 +61,22 @@ const roleColors = {
   0: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
   1: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   2: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+}
+
+const rolePillColors = {
+  0: 'border border-blue-200 bg-blue-50 text-blue-700',
+  1: 'border border-violet-200 bg-violet-50 text-violet-700',
+  2: 'border border-slate-200 bg-slate-100 text-slate-700',
+}
+
+const userStatusPillColors = {
+  1: 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+  0: 'border border-rose-200 bg-rose-50 text-rose-700',
+}
+
+const scrollToListTop = async () => {
+  await nextTick()
+  listSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 }
 
 const normalizeSearchText = (value) => {
@@ -181,8 +201,15 @@ const openEditUserModal = (user) => {
   showModal.value = true
 }
 
+const closeEditUserModal = () => {
+  if (saving.value) return
+  showModal.value = false
+  editingUser.value = null
+}
+
 // Submit form
 const submitForm = async () => {
+  saving.value = true
   try {
     const payload = {
       ho_ten: formData.ho_ten,
@@ -202,11 +229,13 @@ const submitForm = async () => {
       await userService.updateUser(editingUser.value, payload)
       notify.success('Đã cập nhật người dùng')
     }
-    showModal.value = false
+    closeEditUserModal()
     await loadUsers()
     await loadStats()
   } catch (err) {
     error.value = err.message || 'Lỗi lưu người dùng'
+  } finally {
+    saving.value = false
   }
 }
 
@@ -274,18 +303,21 @@ const resetFilters = () => {
 const goToPage = (page) => {
   currentPage.value = page
   loadUsers()
+  scrollToListTop()
 }
 
 const goToPreviousPage = () => {
   if (currentPage.value === 1) return
   currentPage.value -= 1
   loadUsers()
+  scrollToListTop()
 }
 
 const goToNextPage = () => {
   if (currentPage.value === totalPages.value) return
   currentPage.value += 1
   loadUsers()
+  scrollToListTop()
 }
 
 // Lifecycle
@@ -412,7 +444,7 @@ onBeforeUnmount(() => {
   </div>
 
   <!-- User Table -->
-  <div class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+  <div ref="listSectionRef" class="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
     <div class="overflow-x-auto">
       <table class="w-full text-left border-collapse">
         <thead>
@@ -501,119 +533,106 @@ onBeforeUnmount(() => {
       </table>
     </div>
     <!-- Pagination -->
-    <div v-if="!loading && users.length > 0" class="bg-slate-50/50 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 px-6 py-4 flex items-center justify-between">
-      <div class="text-sm text-slate-500">
-        Hiển thị <span class="font-medium text-slate-900 dark:text-slate-100">{{ (currentPage - 1) * perPage + 1 }}</span> 
-        đến <span class="font-medium text-slate-900 dark:text-slate-100">{{ Math.min(currentPage * perPage, totalUsers) }}</span> 
-        trên <span class="font-medium text-slate-900 dark:text-slate-100">{{ totalUsers }}</span> người dùng
-      </div>
-      <div class="flex items-center gap-2">
-        <button 
-          @click="goToPreviousPage"
-          :disabled="currentPage === 1"
-          class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-        >
-          <span class="material-symbols-outlined">chevron_left</span>
-        </button>
-        <button 
-          v-for="page in totalPages"
-          :key="page"
-          @click="goToPage(page)"
-          :class="['w-8 h-8 rounded-lg text-sm font-medium transition-colors', currentPage === page ? 'bg-[#2463eb] text-white' : 'hover:bg-slate-200 dark:hover:bg-slate-700']"
-        >
-          {{ page }}
-        </button>
-        <button 
-          @click="goToNextPage"
-          :disabled="currentPage === totalPages"
-          class="p-2 rounded-lg border border-slate-200 dark:border-slate-700 disabled:opacity-50 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-        >
-          <span class="material-symbols-outlined">chevron_right</span>
-        </button>
-      </div>
-    </div>
+    <AdminPaginationBar
+      v-if="!loading && users.length > 0"
+      :summary="`Hiển thị ${users.length} / ${totalUsers} người dùng`"
+      :current-page="currentPage"
+      :total-pages="totalPages"
+      @prev="goToPreviousPage"
+      @next="goToNextPage"
+    />
   </div>
 
-  <!-- Modal: Tạo/Sửa người dùng -->
-  <div v-if="showModal" class="fixed inset-0 z-50 overflow-y-auto bg-black/50 dark:bg-black/70">
-    <div class="flex min-h-full items-start justify-center p-4 sm:items-center">
-      <div class="flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col overflow-hidden rounded-xl bg-white shadow-xl dark:bg-slate-900">
-      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-        <h3 class="text-lg font-semibold">Chỉnh sửa người dùng</h3>
-        <button @click="showModal = false" class="text-slate-400 hover:text-slate-600">
-          <span class="material-symbols-outlined">close</span>
-        </button>
+  <FormModalShell
+    v-if="showModal"
+    eyebrow="Quản lý người dùng"
+    title="Cập nhật tài khoản hệ thống"
+    description="Điều chỉnh thông tin tài khoản, quyền truy cập và trạng thái hoạt động của người dùng."
+    max-width-class="max-w-4xl"
+    submit-label="Cập nhật người dùng"
+    submit-loading-label="Đang cập nhật..."
+    :saving="saving"
+    @close="closeEditUserModal"
+    @submit="submitForm"
+  >
+    <template #summary>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Người dùng</p>
+        <p class="mt-2 text-base font-semibold text-slate-900">{{ formData.ho_ten || 'Chưa nhập họ tên' }}</p>
+        <p class="mt-1 text-sm text-slate-500">{{ formData.email || 'Chưa có email' }}</p>
       </div>
-      <form @submit.prevent="submitForm" class="flex flex-1 flex-col overflow-hidden">
-        <div class="space-y-4 overflow-y-auto px-6 py-6">
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Họ tên</label>
-          <input v-model="formData.ho_ten" type="text" required class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Vai trò</p>
+        <div class="mt-3">
+          <span :class="['inline-flex rounded-full px-3 py-1 text-sm font-semibold', rolePillColors[formData.vai_tro]]">
+            {{ roleMap[formData.vai_tro] }}
+          </span>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Email</label>
-          <input v-model="formData.email" type="email" required class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
+        <p class="mt-2 text-sm text-slate-500">Phân quyền hiển thị và nhóm chức năng mà tài khoản có thể truy cập.</p>
+      </div>
+      <div class="rounded-2xl border border-slate-200 bg-white p-4">
+        <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Trạng thái</p>
+        <div class="mt-3">
+          <span :class="['inline-flex rounded-full px-3 py-1 text-sm font-semibold', userStatusPillColors[formData.trang_thai]]">
+            {{ formData.trang_thai === 1 ? 'Hoạt động' : 'Khóa' }}
+          </span>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-            Mật khẩu mới (không bắt buộc)
-          </label>
-          <input
-            v-model="formData.mat_khau"
-            type="password"
-            minlength="6"
-            class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none"
-          />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Điện thoại</label>
-          <input v-model="formData.so_dien_thoai" type="tel" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Ngày sinh</label>
-          <input v-model="formData.ngay_sinh" type="date" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Giới tính</label>
-          <select v-model="formData.gioi_tinh" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none">
-            <option value="">-- Chọn --</option>
-            <option value="nam">Nam</option>
-            <option value="nu">Nữ</option>
-            <option value="khac">Khác</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Địa chỉ</label>
-          <input v-model="formData.dia_chi" type="text" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none" />
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Vai trò</label>
-          <select v-model.number="formData.vai_tro" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none">
-            <option value="0">Ứng viên</option>
-            <option value="1">Nhà tuyển dụng</option>
-            <option value="2">Admin</option>
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Trạng thái</label>
-          <select v-model.number="formData.trang_thai" class="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg dark:bg-slate-800 focus:ring-2 focus:ring-[#2463eb] outline-none">
-            <option :value="1">Hoạt động</option>
-            <option :value="0">Khóa</option>
-          </select>
-        </div>
-        </div>
-        <div class="flex gap-3 border-t border-slate-200 px-6 py-4 dark:border-slate-800">
-          <button type="button" @click="showModal = false" class="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-            Hủy
-          </button>
-          <button type="submit" class="flex-1 px-4 py-2 bg-[#2463eb] text-white rounded-lg hover:bg-[#2463eb]/90 transition-colors font-medium">
-            Cập nhật
-          </button>
-        </div>
-      </form>
+        <p class="mt-2 text-sm text-slate-500">Dùng để kiểm soát khả năng đăng nhập và sử dụng hệ thống.</p>
+      </div>
+    </template>
+
+    <div class="grid gap-5 lg:grid-cols-2">
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Họ tên</label>
+        <input v-model="formData.ho_ten" type="text" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Email</label>
+        <input v-model="formData.email" type="email" required class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Mật khẩu mới</label>
+        <input v-model="formData.mat_khau" type="password" minlength="6" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+        <p class="text-xs text-slate-400">Để trống nếu không muốn thay đổi mật khẩu.</p>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Điện thoại</label>
+        <input v-model="formData.so_dien_thoai" type="tel" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Ngày sinh</label>
+        <input v-model="formData.ngay_sinh" type="date" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Giới tính</label>
+        <select v-model="formData.gioi_tinh" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option value="">-- Chọn --</option>
+          <option value="nam">Nam</option>
+          <option value="nu">Nữ</option>
+          <option value="khac">Khác</option>
+        </select>
+      </div>
+      <div class="space-y-2 lg:col-span-2">
+        <label class="block text-sm font-semibold text-slate-700">Địa chỉ</label>
+        <input v-model="formData.dia_chi" type="text" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20" />
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Vai trò</label>
+        <select v-model.number="formData.vai_tro" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option value="0">Ứng viên</option>
+          <option value="1">Nhà tuyển dụng</option>
+          <option value="2">Admin</option>
+        </select>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-sm font-semibold text-slate-700">Trạng thái</label>
+        <select v-model.number="formData.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-base text-slate-900 outline-none transition focus:border-[#2463eb] focus:bg-white focus:ring-2 focus:ring-[#2463eb]/20">
+          <option :value="1">Hoạt động</option>
+          <option :value="0">Khóa</option>
+        </select>
+      </div>
     </div>
-    </div>
-  </div>
+  </FormModalShell>
 
   <!-- Modal: Xác nhận xóa -->
   <div v-if="showDeleteModal" class="fixed inset-0 bg-black/50 dark:bg-black/70 flex items-center justify-center z-50">

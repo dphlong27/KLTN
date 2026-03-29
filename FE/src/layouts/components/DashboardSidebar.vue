@@ -1,4 +1,5 @@
 <script setup>
+import AppLogo from '@/components/AppLogo.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { getStoredCandidate } from '@/utils/authStorage'
@@ -37,13 +38,12 @@ onBeforeUnmount(() => {
     :class="collapsed ? 'w-24' : 'w-64'"
   >
     <div class="flex items-center gap-3 px-6 pb-4 pt-6" :class="collapsed ? 'justify-center' : ''">
-      <div class="flex size-10 items-center justify-center rounded-2xl bg-[#2463eb] text-white shadow-lg shadow-[#2463eb]/20">
-        <span class="material-symbols-outlined">rocket_launch</span>
-      </div>
-      <div v-if="!collapsed">
-        <h2 class="text-xl font-bold tracking-tight text-[#2463eb]">HRTech</h2>
-        <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">Candidate Space</p>
-      </div>
+      <AppLogo
+        :show-text="!collapsed"
+        size="sm"
+        title="AI Recruitment"
+        subtitle="Candidate Space"
+      />
     </div>
     <nav class="flex-1 space-y-1 overflow-y-auto px-3">
       <RouterLink to="/" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Trang chủ' : ''">
