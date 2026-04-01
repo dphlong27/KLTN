@@ -46,6 +46,23 @@ const hasActiveFilters = computed(() =>
 )
 
 const hasSemanticResults = computed(() => semanticResults.value.length > 0)
+const showAllIndustries = ref(false)
+const locationSuggestions = [
+  { label: 'Hà Nội', value: 'Hà Nội' },
+  { label: 'TP.HCM', value: 'TP. Hồ Chí Minh' },
+  { label: 'Đà Nẵng', value: 'Đà Nẵng' },
+  { label: 'Remote', value: 'Remote' },
+]
+const pageSizeOptions = [6, 9, 12, 15]
+
+const visibleIndustries = computed(() =>
+  showAllIndustries.value ? industries.value : industries.value.slice(0, 5)
+)
+
+const selectedIndustryName = computed(() => {
+  if (!filters.nganh_nghe_id) return 'Tất cả ngành nghề'
+  return industries.value.find((industry) => String(industry.id) === String(filters.nganh_nghe_id))?.ten_nganh || 'Ngành nghề đã chọn'
+})
 
 const summaryText = computed(() => {
   if (!pagination.total) return 'Chưa tìm thấy tin tuyển dụng phù hợp.'
@@ -231,6 +248,15 @@ const changePage = async (page) => {
   await fetchJobs(page)
 }
 
+const selectIndustry = (industryId) => {
+  const nextValue = String(industryId)
+  filters.nganh_nghe_id = String(filters.nganh_nghe_id) === nextValue ? '' : nextValue
+}
+
+const applyLocationSuggestion = (locationValue) => {
+  filters.dia_diem = filters.dia_diem === locationValue ? '' : locationValue
+}
+
 const isSaved = (jobId) => savedJobIds.value.has(Number(jobId))
 
 const toggleSavedJob = async (jobId) => {
@@ -302,75 +328,139 @@ watch(
 
     <div class="mt-8 flex flex-col gap-6 lg:flex-row lg:items-start">
       <aside class="w-full shrink-0 lg:w-80">
-        <div class="sticky top-6 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-          <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
-            <div>
-              <h2 class="text-lg font-bold text-slate-900">Bộ lọc tìm việc</h2>
-              <p class="mt-1 text-sm text-slate-500">Thu hẹp kết quả theo nhu cầu của bạn.</p>
+        <div class="sticky top-6 overflow-hidden rounded-[30px] border border-slate-200 bg-white shadow-[0_18px_50px_-24px_rgba(15,23,42,0.35)]">
+          <div class="border-b border-slate-200 bg-slate-50/80 px-6 py-5">
+            <div class="flex flex-nowrap items-center justify-between gap-4">
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 leading-none text-slate-900">
+                  <span class="material-symbols-outlined text-[20px]">filter_alt</span>
+                  <p class="text-[13px] font-extrabold uppercase tracking-[0.12em] sm:text-[14px]">Bộ lọc tìm việc</p>
+                </div>
+              </div>
+              <button
+                class="inline-flex shrink-0 items-center justify-center self-center rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 transition hover:border-blue-200 hover:text-blue-600"
+                type="button"
+                @click="resetFilters"
+              >
+                Xóa lọc
+              </button>
             </div>
-            <button
-              class="text-sm font-semibold text-blue-600 transition hover:text-blue-700"
-              type="button"
-              @click="resetFilters"
-            >
-              Đặt lại
-            </button>
+            <p class="mt-3 text-sm leading-6 text-slate-500">Thu hẹp kết quả theo danh mục nghề, khu vực và nhu cầu tìm kiếm hiện tại.</p>
           </div>
 
-          <form class="space-y-5 px-5 py-5" @submit.prevent="applyFilters">
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-800">Từ khóa</label>
-              <input
-                v-model="filters.search"
-                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white"
-                placeholder="VD: Backend Laravel, thiết kế UI..."
-                type="text"
-              />
-            </div>
+          <form class="space-y-6 px-6 py-6" @submit.prevent="applyFilters">
+            <section class="border-b border-dashed border-slate-200 pb-6">
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-[15px] font-extrabold text-slate-800">Từ khóa tìm kiếm</h3>
+                <span class="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-700">Keyword</span>
+              </div>
+              <div class="relative mt-4">
+                <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                <input
+                  v-model="filters.search"
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:bg-white"
+                  placeholder="VD: Backend Laravel, UI Designer..."
+                  type="text"
+                />
+              </div>
+            </section>
 
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-800">Ngành nghề</label>
-              <select
-                v-model="filters.nganh_nghe_id"
-                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white"
-              >
-                <option value="">Tất cả ngành nghề</option>
-                <option
-                  v-for="industry in industries"
+            <section class="border-b border-dashed border-slate-200 pb-6">
+              <div class="flex items-center justify-between gap-3">
+                <h3 class="text-[15px] font-extrabold text-slate-800">Theo danh mục nghề</h3>
+                <span class="text-xs font-semibold text-slate-400">{{ selectedIndustryName }}</span>
+              </div>
+
+              <div class="mt-4 space-y-3">
+                <label class="flex cursor-pointer items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 transition hover:border-emerald-300 hover:bg-emerald-50/50">
+                  <input
+                    :checked="!filters.nganh_nghe_id"
+                    class="h-4 w-4 accent-emerald-600"
+                    type="checkbox"
+                    @change="filters.nganh_nghe_id = ''"
+                  />
+                  <span class="text-sm font-semibold text-slate-700">Tất cả ngành nghề</span>
+                </label>
+
+                <label
+                  v-for="industry in visibleIndustries"
                   :key="industry.id"
-                  :value="industry.id"
+                  class="flex cursor-pointer items-start gap-3 rounded-2xl px-1 py-1 transition"
                 >
-                  {{ industry.ten_nganh }}
-                </option>
-              </select>
-              <p v-if="industriesLoading" class="mt-2 text-xs text-slate-400">Đang tải danh mục ngành nghề...</p>
-            </div>
+                  <input
+                    :checked="String(filters.nganh_nghe_id) === String(industry.id)"
+                    class="mt-1 h-4 w-4 shrink-0 accent-emerald-600"
+                    type="checkbox"
+                    @change="selectIndustry(industry.id)"
+                  />
+                  <span class="text-sm leading-6 text-slate-700">{{ industry.ten_nganh }}</span>
+                </label>
+              </div>
 
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-800">Địa điểm</label>
-              <input
-                v-model="filters.dia_diem"
-                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white"
-                placeholder="VD: Hà Nội, TP.HCM, Đà Nẵng..."
-                type="text"
-              />
-            </div>
+              <div class="mt-3 flex items-center justify-between">
+                <p v-if="industriesLoading" class="text-xs text-slate-400">Đang tải danh mục ngành nghề...</p>
+                <button
+                  v-else-if="industries.length > 5"
+                  class="text-sm font-bold text-emerald-600 transition hover:text-emerald-700"
+                  type="button"
+                  @click="showAllIndustries = !showAllIndustries"
+                >
+                  {{ showAllIndustries ? 'Thu gọn' : 'Xem thêm' }}
+                </button>
+              </div>
+            </section>
 
-            <div>
-              <label class="mb-2 block text-sm font-semibold text-slate-800">Số kết quả mỗi trang</label>
-              <select
-                v-model="filters.per_page"
-                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white"
-              >
-                <option :value="6">6</option>
-                <option :value="9">9</option>
-                <option :value="12">12</option>
-                <option :value="15">15</option>
-              </select>
-            </div>
+            <section class="border-b border-dashed border-slate-200 pb-6">
+              <h3 class="text-[15px] font-extrabold text-slate-800">Khu vực làm việc</h3>
+              <div class="mt-4 flex flex-wrap gap-2">
+                <button
+                  v-for="location in locationSuggestions"
+                  :key="location.value"
+                  class="rounded-full border px-3 py-2 text-sm font-semibold transition"
+                  :class="filters.dia_diem === location.value
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'"
+                  type="button"
+                  @click="applyLocationSuggestion(location.value)"
+                >
+                  {{ location.label }}
+                </button>
+              </div>
+              <div class="relative mt-4">
+                <span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">location_on</span>
+                <input
+                  v-model="filters.dia_diem"
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:bg-white"
+                  placeholder="Nhập tỉnh thành hoặc hình thức remote..."
+                  type="text"
+                />
+              </div>
+            </section>
+
+            <section>
+              <h3 class="text-[15px] font-extrabold text-slate-800">Số kết quả mỗi trang</h3>
+              <div class="mt-4 grid grid-cols-2 gap-3">
+                <label
+                  v-for="size in pageSizeOptions"
+                  :key="size"
+                  class="flex cursor-pointer items-center gap-3 rounded-2xl border px-4 py-3 transition"
+                  :class="Number(filters.per_page) === size
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'"
+                >
+                  <input
+                    v-model="filters.per_page"
+                    :value="size"
+                    class="h-4 w-4 accent-emerald-600"
+                    type="radio"
+                  />
+                  <span class="text-sm font-semibold">{{ size }} tin</span>
+                </label>
+              </div>
+            </section>
 
             <button
-              class="w-full rounded-2xl bg-blue-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+              class="w-full rounded-2xl bg-emerald-600 px-4 py-3.5 text-sm font-bold text-white transition hover:bg-emerald-700"
               type="submit"
             >
               Áp dụng bộ lọc

@@ -18,12 +18,15 @@ const sendingChatMessage = ref(false)
 const streamEnabled = ref(true)
 const chatStreaming = ref(false)
 const chatStreamStatus = ref('Sẵn sàng')
+const chatSidebarCollapsed = ref(false)
 
 const chatSessions = ref([])
 const chatMessages = ref([])
 const activeChatSessionId = ref(null)
 const chatMessageInput = ref('')
 const chatMessagesContainer = ref(null)
+const chatPanel = ref(null)
+const chatComposerInput = ref(null)
 const chatSessionForm = ref({
   title: 'Tư vấn nghề nghiệp cùng AI',
   related_ho_so_id: '',
@@ -171,6 +174,25 @@ const scrollChatToBottom = async (behavior = 'smooth') => {
   })
 }
 
+const expandChatPanel = async () => {
+  await nextTick()
+
+  chatPanel.value?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+
+  chatComposerInput.value?.focus()
+}
+
+const collapseChatSidebar = () => {
+  chatSidebarCollapsed.value = true
+}
+
+const expandChatSidebar = () => {
+  chatSidebarCollapsed.value = false
+}
+
 const fetchBootstrapData = async () => {
   loadingBootstrap.value = true
   try {
@@ -247,6 +269,8 @@ const createChatSession = async () => {
     await fetchChatSessions()
     if (session?.id) {
       await selectChatSession(session.id)
+      collapseChatSidebar()
+      await expandChatPanel()
     }
   } catch (error) {
     notify.apiError(error, 'Không thể tạo phiên chatbot AI.')
@@ -402,6 +426,7 @@ const deleteChatSession = async () => {
     notify.deleted('Phiên chatbot')
     activeChatSessionId.value = null
     chatMessages.value = []
+    expandChatSidebar()
     emit('refresh-overview')
     await fetchChatSessions()
   } catch (error) {
@@ -422,15 +447,30 @@ watch(
 </script>
 
 <template>
-  <section class="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-    <aside class="space-y-6">
+  <section
+    class="grid grid-cols-1 gap-6"
+    :class="chatSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[360px_minmax(0,1fr)]'"
+  >
+    <aside
+      class="space-y-6"
+      :class="chatSidebarCollapsed ? 'hidden xl:hidden' : ''"
+    >
       <section class="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-lg font-bold text-slate-900 dark:text-white">Tạo phiên chatbot</h2>
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Chọn hồ sơ và job liên quan để AI bám ngữ cảnh tốt hơn.</p>
           </div>
-          <span class="material-symbols-outlined rounded-xl bg-blue-500/10 p-3 text-blue-300">add_comment</span>
+          <div class="flex items-center gap-2">
+            <button
+              class="hidden rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 xl:inline-flex dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              type="button"
+              @click="collapseChatSidebar"
+            >
+              Thu gọn
+            </button>
+            <span class="material-symbols-outlined rounded-xl bg-blue-500/10 p-3 text-blue-300">add_comment</span>
+          </div>
         </div>
 
         <div class="mt-5 space-y-4">
@@ -533,7 +573,7 @@ watch(
       </section>
     </aside>
 
-    <section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
+    <section ref="chatPanel" class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
       <div class="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-center md:justify-between dark:border-slate-800">
         <div>
           <h2 class="text-xl font-bold text-slate-900 dark:text-white">
@@ -547,6 +587,14 @@ watch(
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
+          <button
+            v-if="chatSidebarCollapsed"
+            class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            type="button"
+            @click="expandChatSidebar"
+          >
+            Hiện cột trái
+          </button>
           <span class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold" :class="chatStatusTone">
             <span
               v-if="chatStreaming"
@@ -658,6 +706,7 @@ watch(
 
         <div class="flex flex-col gap-3 lg:flex-row">
           <textarea
+            ref="chatComposerInput"
             v-model="chatMessageInput"
             class="min-h-[112px] flex-1 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm leading-7 text-white outline-none transition placeholder:text-slate-500 focus:border-blue-500"
             placeholder="Nhập câu hỏi về hồ sơ, matching, nghề nghiệp hoặc kỹ năng cần bổ sung..."

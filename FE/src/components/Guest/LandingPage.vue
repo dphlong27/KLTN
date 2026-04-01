@@ -47,17 +47,60 @@ const formatSalary = (job) => {
   const salaryFrom = Number(job?.muc_luong_tu || 0)
   const salaryTo = Number(job?.muc_luong_den || 0)
   const salary = Number(job?.muc_luong || 0)
+  const formatMillion = (value) => {
+    const million = value / 1000000
+    return Number.isInteger(million)
+      ? `${million}`
+      : million.toLocaleString('vi-VN', { maximumFractionDigits: 1 })
+  }
 
   if (salaryFrom && salaryTo) {
-    return `${salaryFrom.toLocaleString('vi-VN')} - ${salaryTo.toLocaleString('vi-VN')} đ`
+    return `${formatMillion(salaryFrom)} - ${formatMillion(salaryTo)} triệu`
   }
 
   if (salary) {
-    return `${salary.toLocaleString('vi-VN')} đ`
+    return `${formatMillion(salary)} triệu`
   }
 
   return 'Thỏa thuận'
 }
+
+const getRemainingSlots = (job) => {
+  const totalSlots = Number(job?.so_luong_tuyen || 0)
+  const acceptedSlots = Number(job?.so_luong_da_nhan || 0)
+  const explicitRemaining = Number(job?.so_luong_con_lai || 0)
+
+  if (explicitRemaining > 0) return explicitRemaining
+  if (totalSlots > 0) return Math.max(totalSlots - acceptedSlots, 0)
+  return 0
+}
+
+const getHiringStatus = (job) => {
+  const totalSlots = Number(job?.so_luong_tuyen || 0)
+  const acceptedSlots = Number(job?.so_luong_da_nhan || 0)
+  const remainingSlots = getRemainingSlots(job)
+
+  if (!totalSlots) {
+    return {
+      label: 'Đang tuyển',
+      tone: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/20',
+    }
+  }
+
+  if (remainingSlots <= 0) {
+    return {
+      label: `Đủ ${acceptedSlots}/${totalSlots} vị trí`,
+      tone: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200/80 dark:bg-rose-500/10 dark:text-rose-300 dark:ring-rose-500/20',
+    }
+  }
+
+  return {
+    label: `Còn ${remainingSlots}/${totalSlots} vị trí`,
+    tone: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200/80 dark:bg-amber-500/10 dark:text-amber-300 dark:ring-amber-500/20',
+  }
+}
+
+const formatCompactNumber = (value) => Number(value || 0).toLocaleString('vi-VN')
 
 const getCompanyName = (job) =>
   job?.cong_ty?.ten_cong_ty || job?.ten_cong_ty || 'Doanh nghiệp đang cập nhật'
@@ -320,48 +363,85 @@ onMounted(() => {
         <div
           v-for="job in sortedFeaturedJobs"
           :key="job.id"
-          class="group relative flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:border-[#2463eb]/50 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
+          class="group relative flex flex-col overflow-hidden rounded-[28px] border border-slate-200/80 bg-white/95 p-5 shadow-[0_20px_60px_-35px_rgba(15,23,42,0.35)] ring-1 ring-white/70 backdrop-blur transition-all hover:-translate-y-1.5 hover:border-[#2463eb]/40 hover:shadow-[0_28px_80px_-38px_rgba(37,99,235,0.45)] dark:border-slate-800 dark:bg-slate-900/95 dark:ring-slate-800/80"
         >
-          <div class="flex items-start justify-between gap-4">
-            <div class="flex h-14 w-14 items-center justify-center rounded-xl bg-slate-100 text-lg font-black text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-              {{ getCompanyName(job).slice(0, 1) }}
+          <div class="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-br from-[#2463eb]/12 via-sky-100/60 to-transparent opacity-90 transition-opacity group-hover:opacity-100 dark:from-[#2463eb]/18 dark:via-slate-900 dark:to-transparent"></div>
+
+          <div class="relative flex items-start justify-between gap-4">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#2463eb] to-sky-500 text-base font-black text-white shadow-lg shadow-blue-200/70">
+                {{ getCompanyName(job).slice(0, 1) }}
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">{{ getCompanyName(job) }}</p>
+                <p class="mt-0.5 inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400">
+                  <span class="material-symbols-outlined text-[14px]">distance</span>
+                  {{ getLocationText(job) }}
+                </p>
+              </div>
             </div>
-            <span class="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-[#2463eb]">
+            <span class="shrink-0 rounded-full border border-blue-200/70 bg-white/90 px-3 py-1 text-[11px] font-bold text-[#2463eb] shadow-sm backdrop-blur dark:border-blue-500/20 dark:bg-slate-950/80">
               {{ job.hinh_thuc_lam_viec || 'Cơ hội mới' }}
             </span>
           </div>
 
-          <div class="mt-6">
-            <h3 class="text-lg font-bold text-slate-900 transition-colors group-hover:text-[#2463eb] dark:text-white">
+          <div class="relative mt-5">
+            <h3 class="line-clamp-2 text-[1.05rem] font-black leading-6 tracking-tight text-slate-900 transition-colors group-hover:text-[#2463eb] dark:text-white">
               {{ job.tieu_de }}
             </h3>
-            <p class="text-sm font-medium text-slate-500">
-              {{ getCompanyName(job) }} • {{ getLocationText(job) }}
-            </p>
           </div>
 
-          <p class="mt-4 line-clamp-3 text-sm leading-7 text-slate-600 dark:text-slate-400">
+          <p class="relative mt-3 line-clamp-2 text-sm leading-6 text-slate-600 dark:text-slate-400">
             {{ job.mo_ta_cong_viec || 'Mô tả công việc đang được cập nhật.' }}
           </p>
 
-          <div class="mt-4 flex flex-wrap gap-2">
+          <div class="relative mt-4 flex flex-wrap gap-2">
             <span
               v-for="tag in getTagList(job)"
               :key="tag"
-              class="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+              class="rounded-full border border-slate-200/80 bg-slate-50/90 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-300"
             >
               {{ tag }}
             </span>
           </div>
 
-          <div class="mt-6 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
-            <span class="text-lg font-bold text-[#2463eb]">{{ formatSalary(job) }}</span>
-            <RouterLink
-              :to="`/jobs/${job.id}`"
-              class="rounded-lg bg-slate-900 px-4 py-2 text-sm font-bold text-white transition-all hover:bg-[#2463eb] dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
-            >
-              Xem chi tiết
-            </RouterLink>
+          <div class="relative mt-5 rounded-[24px] border border-slate-200/80 bg-slate-50/90 p-3.5 shadow-inner shadow-white/80 dark:border-slate-800 dark:bg-slate-950/80 dark:shadow-none">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400 dark:text-slate-500">Mức lương</p>
+                <p class="mt-1 truncate text-lg font-black text-slate-900 dark:text-white">{{ formatSalary(job) }}</p>
+              </div>
+              <span
+                class="shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold"
+                :class="getHiringStatus(job).tone"
+              >
+                {{ getHiringStatus(job).label }}
+              </span>
+            </div>
+
+            <div class="mt-3 flex flex-col gap-3 border-t border-slate-200/80 pt-3 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+              <div class="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <span class="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1.5 ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-700">
+                  <span class="material-symbols-outlined text-[15px]">visibility</span>
+                  {{ formatCompactNumber(job.luot_xem) }} xem
+                </span>
+                <span
+                  v-if="Number(job?.so_luong_tuyen || 0)"
+                  class="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1.5 ring-1 ring-slate-200/80 dark:bg-slate-900 dark:ring-slate-700"
+                >
+                  <span class="material-symbols-outlined text-[15px]">groups</span>
+                  {{ formatCompactNumber(job.so_luong_tuyen) }} chỉ tiêu
+                </span>
+              </div>
+
+              <RouterLink
+                :to="`/jobs/${job.id}`"
+                class="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-[#2463eb] hover:shadow-lg hover:shadow-blue-200/60 dark:bg-white dark:text-slate-900 dark:hover:bg-[#2463eb] dark:hover:text-white"
+              >
+                Xem job
+                <span class="material-symbols-outlined text-[18px]">arrow_outward</span>
+              </RouterLink>
+            </div>
           </div>
         </div>
       </div>

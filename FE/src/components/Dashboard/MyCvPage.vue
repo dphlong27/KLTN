@@ -21,6 +21,8 @@ const parseResult = ref(null)
 const applyingPersonalInfo = ref(false)
 const currentCandidate = ref(getStoredCandidate())
 const selectedPersonalFieldKeys = ref([])
+const detailModalOpen = ref(false)
+const selectedProfileDetail = ref(null)
 
 const educationOptions = [
   { value: 'trung_hoc', label: 'Trung học' },
@@ -261,6 +263,16 @@ const openEditModal = (profile) => {
   editingProfileId.value = profile.id
   fillForm(profile)
   modalOpen.value = true
+}
+
+const openDetailModal = (profile) => {
+  selectedProfileDetail.value = profile
+  detailModalOpen.value = true
+}
+
+const closeDetailModal = () => {
+  detailModalOpen.value = false
+  selectedProfileDetail.value = null
 }
 
 const closeModal = () => {
@@ -598,6 +610,13 @@ onMounted(fetchProfiles)
               {{ statusMeta(profile.trang_thai).action }}
             </button>
             <button
+              class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-slate-700 bg-slate-100 hover:bg-slate-900 hover:text-white transition-all dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
+              type="button"
+              @click="openDetailModal(profile)"
+            >
+              <span class="material-symbols-outlined text-[18px]">article</span> Xem chi tiết
+            </button>
+            <button
               class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-violet-600 bg-violet-600/10 hover:bg-violet-600 hover:text-white transition-all disabled:cursor-not-allowed disabled:opacity-60"
               :disabled="parsingId === profile.id"
               type="button"
@@ -752,6 +771,101 @@ onMounted(fetchProfiles)
             @click="submitProfile"
           >
             {{ saving ? 'Đang lưu...' : editingProfileId ? 'Lưu thay đổi' : 'Tạo hồ sơ' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="detailModalOpen && selectedProfileDetail"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      @click.self="closeDetailModal"
+    >
+      <div class="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">Chi tiết hồ sơ</p>
+            <h3 class="mt-2 text-2xl font-bold text-slate-900">
+              {{ selectedProfileDetail.tieu_de_ho_so }}
+            </h3>
+          </div>
+          <button
+            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            type="button"
+            @click="closeDetailModal"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div class="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-6">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold" :class="statusMeta(selectedProfileDetail.trang_thai).classes">
+              <span class="size-1.5 rounded-full" :class="statusMeta(selectedProfileDetail.trang_thai).dot"></span>
+              {{ statusMeta(selectedProfileDetail.trang_thai).label }}
+            </span>
+            <span class="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold" :class="parseStatusMeta(selectedProfileDetail).classes">
+              <span class="material-symbols-outlined text-[14px]">{{ parseStatusMeta(selectedProfileDetail).icon }}</span>
+              {{ parseStatusMeta(selectedProfileDetail).label }}
+            </span>
+          </div>
+
+          <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Trình độ</p>
+              <p class="mt-2 text-base font-bold text-slate-900">{{ degreeLabel(selectedProfileDetail.trinh_do) }}</p>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Kinh nghiệm</p>
+              <p class="mt-2 text-base font-bold text-slate-900">{{ selectedProfileDetail.kinh_nghiem_nam ?? 0 }} năm</p>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 md:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Cập nhật lần cuối</p>
+              <p class="mt-2 text-base font-bold text-slate-900">{{ formatDate(selectedProfileDetail.updated_at) }}</p>
+            </div>
+          </div>
+
+          <div class="mt-5 space-y-4">
+            <div class="rounded-2xl border border-slate-200 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Mục tiêu nghề nghiệp</p>
+              <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                {{ selectedProfileDetail.muc_tieu_nghe_nghiep || 'Chưa cập nhật mục tiêu nghề nghiệp.' }}
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Mô tả bản thân</p>
+              <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                {{ selectedProfileDetail.mo_ta_ban_than || 'Chưa cập nhật mô tả bản thân.' }}
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">File CV</p>
+              <div class="mt-3">
+                <a
+                  v-if="selectedProfileDetail.file_cv"
+                  :href="cvFileUrl(selectedProfileDetail.file_cv)"
+                  class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb]/10 px-4 py-2.5 text-sm font-semibold text-[#2463eb] transition hover:bg-[#2463eb] hover:text-white"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <span class="material-symbols-outlined text-[18px]">download</span>
+                  Tải xuống CV
+                </a>
+                <p v-else class="text-sm text-slate-500">Hồ sơ này chưa có file CV.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end border-t border-slate-100 px-6 py-5">
+          <button
+            class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-700"
+            type="button"
+            @click="closeDetailModal"
+          >
+            Đóng
           </button>
         </div>
       </div>

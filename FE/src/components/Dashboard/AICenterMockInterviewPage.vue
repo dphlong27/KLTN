@@ -18,6 +18,7 @@ const generatingMockReport = ref(false)
 const streamEnabled = ref(true)
 const mockStreaming = ref(false)
 const mockStreamStatus = ref('Sẵn sàng')
+const mockSidebarCollapsed = ref(false)
 
 const mockSessions = ref([])
 const mockMessages = ref([])
@@ -26,6 +27,8 @@ const mockReport = ref(null)
 const streamingReportText = ref('')
 const mockAnswerInput = ref('')
 const mockMessagesContainer = ref(null)
+const mockPanel = ref(null)
+const mockComposerInput = ref(null)
 const mockSessionForm = ref({
   title: 'Mock Interview cùng AI',
   related_ho_so_id: '',
@@ -146,6 +149,25 @@ const scrollMockToBottom = async (behavior = 'smooth') => {
   })
 }
 
+const expandMockPanel = async () => {
+  await nextTick()
+
+  mockPanel.value?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
+
+  mockComposerInput.value?.focus()
+}
+
+const collapseMockSidebar = () => {
+  mockSidebarCollapsed.value = true
+}
+
+const expandMockSidebar = () => {
+  mockSidebarCollapsed.value = false
+}
+
 const fetchBootstrapData = async () => {
   loadingBootstrap.value = true
   try {
@@ -239,6 +261,8 @@ const createMockSession = async () => {
     await fetchMockSessions()
     if (session?.id) {
       await selectMockSession(session.id)
+      collapseMockSidebar()
+      await expandMockPanel()
     }
   } catch (error) {
     notify.apiError(error, 'Không thể tạo phiên mock interview.')
@@ -418,6 +442,7 @@ const deleteMockSession = async () => {
     mockMessages.value = []
     mockReport.value = null
     streamingReportText.value = ''
+    expandMockSidebar()
     emit('refresh-overview')
     await fetchMockSessions()
   } catch (error) {
@@ -438,15 +463,30 @@ watch(
 </script>
 
 <template>
-  <section class="grid grid-cols-1 gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-    <aside class="space-y-6">
+  <section
+    class="grid grid-cols-1 gap-6"
+    :class="mockSidebarCollapsed ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[360px_minmax(0,1fr)]'"
+  >
+    <aside
+      class="space-y-6"
+      :class="mockSidebarCollapsed ? 'hidden xl:hidden' : ''"
+    >
       <section class="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
         <div class="flex items-center justify-between">
           <div>
             <h2 class="text-lg font-bold text-slate-900 dark:text-white">Tạo phiên mock interview</h2>
             <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">Chọn hồ sơ, job mục tiêu và số câu phỏng vấn.</p>
           </div>
-          <span class="material-symbols-outlined rounded-xl bg-violet-500/10 p-3 text-violet-300">school</span>
+          <div class="flex items-center gap-2">
+            <button
+              class="hidden rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 xl:inline-flex dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              type="button"
+              @click="collapseMockSidebar"
+            >
+              Thu gọn
+            </button>
+            <span class="material-symbols-outlined rounded-xl bg-violet-500/10 p-3 text-violet-300">school</span>
+          </div>
         </div>
 
         <div class="mt-5 space-y-4">
@@ -560,7 +600,7 @@ watch(
       </section>
     </aside>
 
-    <section class="space-y-6">
+    <section ref="mockPanel" class="space-y-6">
       <section class="rounded-2xl border border-slate-200 bg-white/95 p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900/85">
         <div class="flex flex-col gap-4 border-b border-slate-200 pb-5 md:flex-row md:items-center md:justify-between dark:border-slate-800">
           <div>
@@ -575,6 +615,14 @@ watch(
           </div>
 
         <div class="flex flex-wrap items-center gap-3">
+          <button
+            v-if="mockSidebarCollapsed"
+            class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            type="button"
+            @click="expandMockSidebar"
+          >
+            Hiện cột trái
+          </button>
           <span class="inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold" :class="mockStatusTone">
             <span
               v-if="mockStreaming"
@@ -683,6 +731,7 @@ watch(
 
         <div class="mt-5 flex flex-col gap-3 lg:flex-row">
           <textarea
+            ref="mockComposerInput"
             v-model="mockAnswerInput"
             class="min-h-[112px] flex-1 rounded-2xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-sm leading-7 text-white outline-none transition placeholder:text-slate-500 focus:border-violet-500"
             placeholder="Nhập câu trả lời của bạn cho câu hỏi phỏng vấn hiện tại..."

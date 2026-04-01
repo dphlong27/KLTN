@@ -239,7 +239,7 @@ onMounted(async () => {
       </div>
 
       <div class="mt-8 grid gap-6 xl:grid-cols-[420px_minmax(0,1fr)]">
-        <section class="rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_22px_60px_rgba(15,23,42,0.32)]">
+        <section class="self-start rounded-[28px] border border-slate-200 bg-white/95 p-6 shadow-[0_22px_60px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-900/85 dark:shadow-[0_22px_60px_rgba(15,23,42,0.32)]">
           <div class="flex items-start justify-between gap-4">
             <div>
               <h2 class="text-2xl font-bold text-slate-900 dark:text-white">{{ isEditMode ? 'Cập nhật kỹ năng' : 'Thêm kỹ năng mới' }}</h2>
@@ -368,58 +368,75 @@ onMounted(async () => {
             <article
               v-for="item in mySkills"
               :key="item.id"
-              class="rounded-[26px] border border-slate-200 bg-slate-50/80 p-5 shadow-[0_18px_48px_rgba(148,163,184,0.12)] dark:border-white/10 dark:bg-slate-950/45 dark:shadow-[0_18px_48px_rgba(15,23,42,0.24)]"
+              class="overflow-hidden rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_14px_36px_rgba(148,163,184,0.10)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(148,163,184,0.14)] dark:border-white/10 dark:bg-slate-950/45 dark:shadow-[0_14px_36px_rgba(15,23,42,0.22)]"
             >
-              <div class="flex items-start justify-between gap-3">
-                <div>
-                  <div class="inline-flex items-center gap-2 rounded-full border border-blue-400/20 bg-blue-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-blue-700 dark:text-blue-100/80">
-                    <span class="material-symbols-outlined text-base">star</span>
-                    {{ levelLabel(item.muc_do) }}
+              <div class="rounded-[18px] border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-indigo-50 p-3.5 dark:border-white/10 dark:bg-gradient-to-r dark:from-slate-900 dark:via-slate-900 dark:to-slate-800/80">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <div class="inline-flex items-center gap-1.5 rounded-full border border-blue-400/20 bg-blue-500/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-700 dark:text-blue-100/80">
+                      <span class="material-symbols-outlined text-sm">star</span>
+                      {{ levelLabel(item.muc_do) }}
+                    </div>
+                    <h3 class="mt-2.5 text-[1.75rem] font-bold tracking-tight text-slate-900 dark:text-white">
+                      {{ item.ky_nang?.ten_ky_nang || `Kỹ năng #${item.ky_nang_id}` }}
+                    </h3>
+                    <p class="mt-1.5 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                      {{ Number(item.nam_kinh_nghiem || 0) }} năm kinh nghiệm
+                      <br>
+                      {{ Number(item.so_chung_chi || 0) }} chứng chỉ
+                    </p>
                   </div>
-                  <h3 class="mt-3 text-2xl font-bold text-slate-900 dark:text-white">
-                    {{ item.ky_nang?.ten_ky_nang || `Kỹ năng #${item.ky_nang_id}` }}
-                  </h3>
-                  <p class="mt-2 text-sm text-slate-600 dark:text-slate-400">
-                    {{ Number(item.nam_kinh_nghiem || 0) }} năm kinh nghiệm · {{ Number(item.so_chung_chi || 0) }} chứng chỉ
-                  </p>
-                </div>
 
-                <div class="flex items-center gap-2">
+                  <div class="flex items-center gap-2">
+                    <button
+                      type="button"
+                      class="inline-flex h-10 w-10 items-center justify-center rounded-[18px] border border-slate-200 bg-white text-slate-600 transition hover:border-blue-400/40 hover:text-slate-900 dark:border-white/10 dark:bg-slate-900/70 dark:text-slate-300 dark:hover:text-white"
+                      @click="handleEdit(item)"
+                    >
+                      <span class="material-symbols-outlined">edit</span>
+                    </button>
                   <button
                     type="button"
-                    class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 text-slate-600 transition hover:border-blue-400/40 hover:text-slate-900 dark:border-white/10 dark:text-slate-300 dark:hover:text-white"
-                    @click="handleEdit(item)"
-                  >
-                    <span class="material-symbols-outlined">edit</span>
-                  </button>
-                  <button
-                    type="button"
-                    class="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-red-400/20 text-red-600 transition hover:border-red-400/50 hover:bg-red-500/10 dark:text-red-300"
+                    class="inline-flex h-10 w-10 items-center justify-center rounded-[18px] border border-red-400/20 bg-white text-red-600 transition hover:border-red-400/50 hover:bg-red-500/10 dark:bg-slate-900/70 dark:text-red-300"
                     @click="askDelete(item)"
                   >
                     <span class="material-symbols-outlined">delete</span>
-                  </button>
+                    </button>
+                  </div>
+                </div>
+
+                <div class="mt-3.5">
+                  <div class="mb-2 flex items-center justify-between text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                    <span>Độ thành thạo</span>
+                    <span>{{ item.muc_do }}/5</span>
+                  </div>
+                  <div class="h-2 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                    <div
+                      class="h-full rounded-full bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-500"
+                      :style="{ width: `${Math.max(8, Number(item.muc_do || 0) * 20)}%` }"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div class="mt-5 grid grid-cols-3 gap-3">
-                <div class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 dark:border-white/8 dark:bg-slate-800/75">
+              <div class="mt-3.5 grid grid-cols-3 gap-2.5">
+                <div class="rounded-[18px] border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-white/8 dark:bg-slate-900/70">
                   <p class="text-[11px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Mức độ</p>
-                  <p class="mt-2 text-lg font-bold text-slate-900 dark:text-white">{{ item.muc_do }}/5</p>
+                  <p class="mt-1.5 text-lg font-bold text-slate-900 dark:text-white">{{ item.muc_do }}/5</p>
+                  <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{{ levelLabel(item.muc_do) }}</p>
                 </div>
-                <div class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 dark:border-white/8 dark:bg-slate-800/75">
+                <div class="rounded-[18px] border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-white/8 dark:bg-slate-900/70">
                   <p class="text-[11px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Kinh nghiệm</p>
-                  <p class="mt-2 text-lg font-bold text-slate-900 dark:text-white">{{ item.nam_kinh_nghiem || 0 }} năm</p>
+                  <p class="mt-1.5 text-lg font-bold text-slate-900 dark:text-white">{{ item.nam_kinh_nghiem || 0 }} năm</p>
+                  <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Thời gian tích lũy</p>
                 </div>
-                <div class="rounded-2xl border border-slate-200 bg-white/90 px-4 py-4 dark:border-white/8 dark:bg-slate-800/75">
+                <div class="rounded-[18px] border border-slate-200 bg-slate-50/80 px-3 py-3 dark:border-white/8 dark:bg-slate-900/70">
                   <p class="text-[11px] uppercase tracking-[0.3em] text-slate-500 dark:text-slate-400">Chứng chỉ</p>
-                  <p class="mt-2 text-lg font-bold text-slate-900 dark:text-white">{{ item.so_chung_chi || 0 }}</p>
+                  <p class="mt-1.5 text-lg font-bold text-slate-900 dark:text-white">{{ item.so_chung_chi || 0 }}</p>
+                  <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">Tài liệu liên quan</p>
                 </div>
               </div>
 
-              <div v-if="item.hinh_anh_url" class="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white dark:border-white/8 dark:bg-slate-950/60">
-                <img :src="item.hinh_anh_url" alt="Chứng chỉ kỹ năng" class="h-40 w-full object-cover">
-              </div>
             </article>
           </div>
         </section>
