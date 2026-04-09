@@ -15,15 +15,13 @@
             <td style="padding:28px 32px;background:linear-gradient(135deg,#102144 0%,#2463eb 100%);color:#ffffff;">
               <div style="font-size:13px;letter-spacing:0.28em;text-transform:uppercase;opacity:0.82;font-weight:700;">AIRecruitment</div>
               <div style="margin-top:18px;display:inline-block;padding:8px 14px;border-radius:999px;font-size:13px;font-weight:700;background:#dbeafe;color:#1d4ed8;">
-                {{ ($mailMode ?? 'scheduled') === 'reminder' ? 'Nhắc lịch phỏng vấn' : ($isRescheduled ? 'Lịch phỏng vấn đã cập nhật' : 'Thư mời phỏng vấn') }}
+                {{ $isRescheduled ? 'Lịch phỏng vấn đã cập nhật' : 'Thư mời phỏng vấn' }}
               </div>
               <h1 style="margin:18px 0 0;font-size:30px;line-height:1.25;font-weight:800;">
-                {{ ($mailMode ?? 'scheduled') === 'reminder' ? 'Buổi phỏng vấn của bạn sắp diễn ra' : ($isRescheduled ? 'Lịch phỏng vấn của bạn đã được cập nhật' : 'Bạn có lịch phỏng vấn mới') }}
+                {{ $isRescheduled ? 'Lịch phỏng vấn của bạn đã được cập nhật' : 'Bạn có lịch phỏng vấn mới' }}
               </h1>
               <p style="margin:14px 0 0;font-size:15px;line-height:1.7;opacity:0.92;">
-                {{ ($mailMode ?? 'scheduled') === 'reminder'
-                  ? 'Đây là email nhắc lịch trước buổi phỏng vấn của bạn. Vui lòng kiểm tra lại thời gian và chuẩn bị đầy đủ.'
-                  : ($isRescheduled ? 'Nhà tuyển dụng vừa thay đổi thông tin buổi phỏng vấn. Vui lòng kiểm tra lại các mốc thời gian bên dưới.' : 'Nhà tuyển dụng đã đặt lịch phỏng vấn cho hồ sơ ứng tuyển của bạn.') }}
+                {{ $isRescheduled ? 'Nhà tuyển dụng vừa thay đổi thông tin buổi phỏng vấn. Vui lòng kiểm tra lại các mốc thời gian bên dưới.' : 'Nhà tuyển dụng đã đặt lịch phỏng vấn cho hồ sơ ứng tuyển của bạn.' }}
               </p>
             </td>
           </tr>
@@ -45,12 +43,6 @@
                   <td style="width:180px;padding:16px 18px;background:#eff6ff;border-radius:16px;font-size:13px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#2563eb;">Thời gian</td>
                   <td style="padding:16px 18px;background:#eff6ff;border-radius:16px;font-size:18px;font-weight:800;color:#1d4ed8;">{{ $interviewTime }}</td>
                 </tr>
-                @if (!empty($interviewRound))
-                  <tr>
-                    <td style="width:180px;padding:16px 18px;background:#f8fafc;border-radius:16px;font-size:13px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#64748b;">Vòng phỏng vấn</td>
-                    <td style="padding:16px 18px;background:#f8fafc;border-radius:16px;font-size:16px;font-weight:700;color:#0f172a;">{{ $interviewRound }}</td>
-                  </tr>
-                @endif
                 @if (!empty($interviewMode))
                   <tr>
                     <td style="width:180px;padding:16px 18px;background:#f8fafc;border-radius:16px;font-size:13px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#64748b;">Hình thức</td>

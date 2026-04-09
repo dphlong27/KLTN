@@ -315,6 +315,10 @@ onMounted(async () => {
               <span class="font-bold text-green-600 dark:text-green-400">{{ stats.activeJobs }}</span>
             </div>
             <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-500">Số người follow</span>
+              <span class="font-bold">{{ company?.so_nguoi_theo_doi || 0 }}</span>
+            </div>
+            <div class="flex items-center justify-between">
               <span class="text-sm text-slate-500">Ngành nghề</span>
               <span class="font-bold">{{ currentIndustryLabel }}</span>
             </div>

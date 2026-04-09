@@ -1,14 +1,20 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
-import { jobService } from '@/services/api'
+import { followCompanyService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { getAuthToken, getStoredCandidate } from '@/utils/authStorage'
 
 const route = useRoute()
 const notify = useNotify()
 
 const loading = ref(false)
+const followSubmitting = ref(false)
 const company = ref(null)
+
+const hasAuthToken = computed(() => Boolean(getAuthToken()))
+const currentUser = computed(() => getStoredCandidate())
+const isCandidate = computed(() => hasAuthToken.value && currentUser.value?.vai_tro === 0)
 
 const loadCompany = async () => {
   loading.value = true
@@ -40,6 +46,39 @@ const companyWebsite = computed(() => company.value?.website || '')
 const companyEmail = computed(() => company.value?.email || company.value?.nguoi_dung?.email || '')
 const companyScale = computed(() => company.value?.quy_mo || 'Đang cập nhật')
 const openJobsCount = computed(() => company.value?.so_tin_dang_hoat_dong || companyJobs.value.length || 0)
+const followerCount = computed(() => Number(company.value?.so_nguoi_theo_doi || 0))
+const isFollowed = computed(() => Boolean(company.value?.da_theo_doi))
+
+const toggleFollowCompany = async () => {
+  if (!company.value?.id || followSubmitting.value) return
+
+  if (!isCandidate.value) {
+    notify.warning('Vui lòng đăng nhập bằng tài khoản ứng viên để theo dõi công ty.')
+    return
+  }
+
+  followSubmitting.value = true
+  try {
+    const response = await followCompanyService.toggleFollowCompany(company.value.id)
+    const followed = Boolean(response?.data?.trang_thai_theo_doi)
+
+    company.value = {
+      ...company.value,
+      da_theo_doi: followed,
+      so_nguoi_theo_doi: Number(response?.data?.so_nguoi_theo_doi || 0),
+    }
+
+    if (followed) {
+      notify.success('Đã theo dõi công ty. Bạn sẽ nhận thông báo khi có job mới.')
+    } else {
+      notify.info('Đã bỏ theo dõi công ty.')
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không thể cập nhật trạng thái theo dõi công ty.')
+  } finally {
+    followSubmitting.value = false
+  }
+}
 
 watch(() => route.params.id, loadCompany)
 onMounted(loadCompany)
@@ -107,17 +146,40 @@ onMounted(loadCompany)
                 <p class="mt-3 text-3xl font-black text-slate-900 dark:text-white">{{ openJobsCount }}</p>
               </div>
               <div class="rounded-2xl border border-slate-200 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-900/70">
+                <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Người theo dõi</p>
+                <p class="mt-3 text-3xl font-black text-slate-900 dark:text-white">{{ followerCount }}</p>
+              </div>
+              <div class="rounded-2xl border border-slate-200 bg-white/85 p-4 dark:border-slate-700 dark:bg-slate-900/70">
                 <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Liên hệ</p>
                 <p class="mt-3 break-all text-sm font-semibold text-slate-900 dark:text-white">
                   {{ companyEmail || 'Đang cập nhật' }}
                 </p>
               </div>
+            </div>
+
+            <div class="flex flex-wrap gap-3 lg:max-w-[320px] lg:justify-end">
+              <button
+                class="rounded-2xl px-5 py-4 text-center text-sm font-bold transition"
+                :class="isFollowed
+                  ? 'border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                  : 'border border-[#2463eb]/20 bg-[#2463eb] text-white hover:bg-blue-700'"
+                type="button"
+                @click="toggleFollowCompany"
+              >
+                {{
+                  followSubmitting
+                    ? 'Đang xử lý...'
+                    : isFollowed
+                      ? 'Đang theo dõi'
+                      : 'Theo dõi công ty'
+                }}
+              </button>
               <a
                 v-if="companyWebsite"
                 :href="companyWebsite"
                 target="_blank"
                 rel="noreferrer"
-                class="rounded-2xl border border-[#2463eb]/20 bg-[#2463eb] px-5 py-4 text-center text-sm font-bold text-white transition hover:bg-blue-700"
+                class="rounded-2xl border border-slate-200 bg-white/85 px-5 py-4 text-center text-sm font-bold text-slate-700 transition hover:border-[#2463eb] hover:text-[#2463eb] dark:border-slate-700 dark:bg-slate-900/70 dark:text-white"
               >
                 Truy cập website
               </a>
@@ -200,6 +262,10 @@ onMounted(loadCompany)
                 <div>
                   <p class="font-bold uppercase tracking-[0.25em] text-slate-400">Địa chỉ</p>
                   <p class="mt-2 text-base font-semibold text-slate-900 dark:text-white">{{ companyAddress }}</p>
+                </div>
+                <div>
+                  <p class="font-bold uppercase tracking-[0.25em] text-slate-400">Người theo dõi</p>
+                  <p class="mt-2 text-base font-semibold text-slate-900 dark:text-white">{{ followerCount }}</p>
                 </div>
                 <div v-if="companyEmail">
                   <p class="font-bold uppercase tracking-[0.25em] text-slate-400">Email</p>

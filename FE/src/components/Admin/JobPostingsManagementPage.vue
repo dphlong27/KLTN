@@ -179,7 +179,6 @@ const loadJobs = async () => {
     normalizeJobs(response)
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách tin tuyển dụng'
-    notify.apiError(err, 'Không thể tải danh sách tin tuyển dụng.')
   } finally {
     loading.value = false
   }
@@ -230,7 +229,6 @@ const submitEdit = async () => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể cập nhật tin tuyển dụng'
-    notify.apiError(err, 'Không thể cập nhật tin tuyển dụng.')
   } finally {
     saving.value = false
   }
@@ -243,7 +241,6 @@ const toggleStatus = async (job) => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể cập nhật trạng thái'
-    notify.apiError(err, 'Không thể cập nhật trạng thái tin tuyển dụng.')
   }
 }
 
@@ -263,7 +260,6 @@ const deleteJob = async () => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể xóa tin tuyển dụng'
-    notify.apiError(err, 'Không thể xóa tin tuyển dụng.')
   }
 }
 

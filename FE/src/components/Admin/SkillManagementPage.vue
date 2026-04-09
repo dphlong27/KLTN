@@ -95,7 +95,6 @@ const loadSkills = async () => {
     normalizeSkills(response)
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách kỹ năng'
-    notify.apiError(err, 'Không thể tải danh sách kỹ năng.')
   } finally {
     loading.value = false
   }
@@ -151,7 +150,6 @@ const submitForm = async () => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể lưu kỹ năng'
-    notify.apiError(err, 'Không thể lưu kỹ năng.')
   } finally {
     saving.value = false
   }
@@ -171,7 +169,6 @@ const deleteSkill = async () => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể xóa kỹ năng'
-    notify.apiError(err, 'Không thể xóa kỹ năng.')
   }
 }
 

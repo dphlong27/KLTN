@@ -106,7 +106,6 @@ const loadMatchings = async () => {
     error.value = err.message || 'Không thể tải lịch sử AI matching.'
     records.value = []
     totalRecords.value = 0
-    notify.apiError(err, 'Không thể tải lịch sử AI matching.')
   } finally {
     loading.value = false
   }
@@ -330,10 +329,11 @@ onMounted(async () => {
 
   <div
     v-if="showDetailModal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+    class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 backdrop-blur-sm"
     @click.self="showDetailModal = false"
   >
-    <div class="w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+    <div class="flex min-h-full items-center justify-center px-4 py-6">
+      <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
       <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Chi tiết AI matching</p>
@@ -354,7 +354,7 @@ onMounted(async () => {
         </button>
       </div>
 
-      <div v-if="selectedRecord" class="space-y-5 px-6 py-6">
+      <div v-if="selectedRecord" class="flex-1 space-y-5 overflow-y-auto px-6 py-6">
         <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
           <div class="rounded-2xl bg-slate-50 px-4 py-4 dark:bg-slate-800">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Điểm tổng</p>
@@ -415,6 +415,7 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </template>

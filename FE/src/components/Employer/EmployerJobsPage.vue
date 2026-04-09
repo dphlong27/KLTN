@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { employerJobService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
@@ -17,6 +17,11 @@ const activeTab = ref('all')
 const showModal = ref(false)
 const editingJobId = ref(null)
 const deleteTarget = ref(null)
+const expiryDate = ref('')
+const expiryDateDisplay = ref('')
+const expiryTime = ref('')
+const expiryDateInput = ref(null)
+const expiryTimeInput = ref(null)
 
 const filters = reactive({
   search: '',
@@ -51,6 +56,9 @@ const resetJobForm = () => {
   jobForm.ngay_het_han = ''
   jobForm.trang_thai = 1
   jobForm.nganh_nghes = []
+  expiryDate.value = ''
+  expiryDateDisplay.value = ''
+  expiryTime.value = ''
 }
 
 const statusTabs = computed(() => {
@@ -138,6 +146,77 @@ const parseDateTime = (value) => {
 const formatDateTime = (value) => formatDateTimeVN(value, 'Chưa đặt hạn')
 const formatDateTimeInput = (value) => toDateTimeLocalInputVN(value)
 
+const formatExpiryDateDisplay = (value) => {
+  if (!value) return ''
+
+  const [year, month, day] = String(value).split('-')
+  if (!year || !month || !day) return ''
+
+  return `${day.padStart(2, '0')}/${month.padStart(2, '0')}/${year}`
+}
+
+const parseExpiryDateDisplay = (value) => {
+  const trimmed = String(value || '').trim()
+  if (!trimmed) return ''
+
+  const normalized = trimmed.replace(/-/g, '/')
+  const match = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!match) return null
+
+  const [, dayRaw, monthRaw, year] = match
+  const day = dayRaw.padStart(2, '0')
+  const month = monthRaw.padStart(2, '0')
+  const iso = `${year}-${month}-${day}`
+  const parsed = new Date(`${iso}T00:00:00`)
+
+  if (Number.isNaN(parsed.getTime())) return null
+  if (
+    parsed.getFullYear() !== Number(year)
+    || parsed.getMonth() + 1 !== Number(month)
+    || parsed.getDate() !== Number(day)
+  ) {
+    return null
+  }
+
+  return iso
+}
+
+const commitExpiryDateDisplay = () => {
+  const trimmed = String(expiryDateDisplay.value || '').trim()
+
+  if (!trimmed) {
+    expiryDate.value = ''
+    expiryDateDisplay.value = ''
+    return true
+  }
+
+  const parsed = parseExpiryDateDisplay(trimmed)
+  if (!parsed) {
+    expiryDate.value = ''
+    return false
+  }
+
+  expiryDate.value = parsed
+  expiryDateDisplay.value = formatExpiryDateDisplay(parsed)
+  return true
+}
+
+const syncExpiryInputsFromForm = () => {
+  const formatted = formatDateTimeInput(jobForm.ngay_het_han)
+
+  if (!formatted) {
+    expiryDate.value = ''
+    expiryDateDisplay.value = ''
+    expiryTime.value = ''
+    return
+  }
+
+  const [datePart, timePart = ''] = formatted.split('T')
+  expiryDate.value = datePart || ''
+  expiryDateDisplay.value = formatExpiryDateDisplay(datePart || '')
+  expiryTime.value = timePart.slice(0, 5)
+}
+
 const formatSalary = (value) => {
   if (value === null || value === undefined || value === '') return 'Thỏa thuận'
   return `${Number(value).toLocaleString('vi-VN')} đ`
@@ -203,6 +282,7 @@ const openEditModal = (job) => {
   jobForm.ngay_het_han = formatDateTimeInput(job.ngay_het_han)
   jobForm.trang_thai = Number(job.trang_thai ?? 1)
   jobForm.nganh_nghes = (job.nganh_nghes || []).map((item) => item.id)
+  syncExpiryInputsFromForm()
   showModal.value = true
 }
 
@@ -223,6 +303,27 @@ const closeDeleteModal = () => {
   deleteTarget.value = null
 }
 
+const openNativePicker = (inputRef) => {
+  const input = inputRef?.showPicker
+    ? inputRef
+    : inputRef?.value?.showPicker
+      ? inputRef.value
+      : null
+
+  if (!input) return
+
+  if (typeof input.showPicker === 'function') {
+    input.showPicker()
+    return
+  }
+
+  if (typeof input.click === 'function') {
+    input.click()
+  }
+
+  input.focus()
+}
+
 const buildPayload = () => ({
   tieu_de: jobForm.tieu_de.trim(),
   mo_ta_cong_viec: jobForm.mo_ta_cong_viec.trim(),
@@ -238,12 +339,21 @@ const buildPayload = () => ({
 })
 
 const submitJobForm = async () => {
+  if (!commitExpiryDateDisplay()) {
+    notify.warning('Vui lòng nhập ngày hết hạn theo định dạng dd/mm/yyyy.')
+    return
+  }
+
   if (!jobForm.tieu_de.trim() || !jobForm.mo_ta_cong_viec.trim() || !jobForm.dia_diem_lam_viec.trim()) {
     notify.warning('Vui lòng nhập đầy đủ tiêu đề, mô tả và địa điểm làm việc.')
     return
   }
   if (!jobForm.nganh_nghes.length) {
     notify.warning('Vui lòng chọn ít nhất một ngành nghề.')
+    return
+  }
+  if (expiryTime.value && !expiryDate.value) {
+    notify.warning('Vui lòng chọn ngày hết hạn nếu bạn đã nhập giờ hết hạn.')
     return
   }
 
@@ -309,6 +419,19 @@ const applyFilters = async () => {
 
 onMounted(async () => {
   await Promise.all([fetchIndustries(), fetchEmployerJobs()])
+})
+
+watch([expiryDate, expiryTime], ([dateValue, timeValue]) => {
+  if (!dateValue) {
+    jobForm.ngay_het_han = ''
+    return
+  }
+
+  jobForm.ngay_het_han = `${dateValue}T${timeValue || '23:59'}`
+})
+
+watch(expiryDate, (value) => {
+  expiryDateDisplay.value = formatExpiryDateDisplay(value)
 })
 </script>
 
@@ -605,10 +728,54 @@ onMounted(async () => {
             <input v-model="jobForm.muc_luong" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" min="0" placeholder="18000000" type="number">
           </label>
 
-          <label class="block">
+          <div class="block">
             <span class="mb-2 block text-sm font-semibold text-slate-300">Ngày giờ hết hạn</span>
-            <input v-model="jobForm.ngay_het_han" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" type="datetime-local">
-          </label>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
+              <div class="relative">
+                <input
+                  v-model="expiryDateDisplay"
+                  class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition focus:border-[#2463eb]"
+                  placeholder="dd/mm/yyyy"
+                  type="text"
+                  @blur="commitExpiryDateDisplay"
+                  @keyup.enter="commitExpiryDateDisplay"
+                >
+                <input
+                  ref="expiryDateInput"
+                  v-model="expiryDate"
+                  class="pointer-events-none absolute inset-0 opacity-0"
+                  tabindex="-1"
+                  type="date"
+                >
+                <button
+                  class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-white/90 transition hover:text-white"
+                  type="button"
+                  @click="openNativePicker(expiryDateInput)"
+                >
+                  <span class="material-symbols-outlined text-[18px]">calendar_month</span>
+                </button>
+              </div>
+              <div class="relative">
+                <input
+                  ref="expiryTimeInput"
+                  v-model="expiryTime"
+                  class="datetime-picker-white w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition focus:border-[#2463eb]"
+                  step="60"
+                  type="time"
+                >
+                <button
+                  class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-white/90 transition hover:text-white"
+                  type="button"
+                  @click="openNativePicker(expiryTimeInput)"
+                >
+                  <span class="material-symbols-outlined text-[18px]">schedule</span>
+                </button>
+              </div>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">
+              Có thể gõ trực tiếp hoặc bấm chọn. Nếu chỉ chọn ngày, hệ thống sẽ lấy giờ mặc định là 23:59.
+            </p>
+          </div>
 
           <label class="block">
             <span class="mb-2 block text-sm font-semibold text-slate-300">Trạng thái ban đầu</span>
@@ -716,3 +883,18 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style scoped>
+.datetime-picker-white {
+  color-scheme: dark;
+}
+
+.datetime-picker-white::-webkit-calendar-picker-indicator {
+  opacity: 0;
+  position: absolute;
+  right: 0;
+  width: 2.75rem;
+  height: 100%;
+  cursor: pointer;
+}
+</style>

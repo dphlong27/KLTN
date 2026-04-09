@@ -62,10 +62,6 @@ onBeforeUnmount(() => {
         <span class="material-symbols-outlined">description</span>
         <span v-if="!collapsed" class="text-sm">CV của tôi</span>
       </RouterLink>
-      <RouterLink to="/cv-builder" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'CV Builder' : ''">
-        <span class="material-symbols-outlined">edit_note</span>
-        <span v-if="!collapsed" class="text-sm">CV Builder</span>
-      </RouterLink>
       <RouterLink to="/my-skills" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Kỹ năng của tôi' : ''">
         <span class="material-symbols-outlined">psychology</span>
         <span v-if="!collapsed" class="text-sm">Kỹ năng của tôi</span>
@@ -85,6 +81,10 @@ onBeforeUnmount(() => {
       <RouterLink to="/saved-jobs" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Tin đã lưu' : ''">
         <span class="material-symbols-outlined">bookmark</span>
         <span v-if="!collapsed" class="text-sm">Tin đã lưu</span>
+      </RouterLink>
+      <RouterLink to="/followed-companies" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Công ty đã follow' : ''">
+        <span class="material-symbols-outlined">apartment</span>
+        <span v-if="!collapsed" class="text-sm">Công ty đã follow</span>
       </RouterLink>
       <div v-if="!collapsed" class="px-3 pb-2 pt-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">AI Services</div>
       <RouterLink to="/ai-center/chatbot" active-class="active-nav" class="nav-link group flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'AI Center' : ''">

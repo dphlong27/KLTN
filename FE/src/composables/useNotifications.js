@@ -6,6 +6,7 @@ import {
   companyService,
   employerApplicationService,
   employerJobService,
+  followCompanyService,
   userService,
 } from '@/services/api'
 import { getStoredUser } from '@/utils/authStorage'
@@ -100,10 +101,19 @@ const createNotification = ({
 })
 
 const buildCandidateNotifications = async () => {
-  const response = await applicationService.getApplications({ page: 1, per_page: 12 })
-  const applications = response?.data?.data || []
+  const [applicationsResult, followedCompaniesResult] = await Promise.allSettled([
+    applicationService.getApplications({ page: 1, per_page: 12 }),
+    followCompanyService.getFollowedCompanies({ page: 1, per_page: 12, recent_jobs_limit: 3 }),
+  ])
 
-  return applications
+  const applications = applicationsResult.status === 'fulfilled'
+    ? (applicationsResult.value?.data?.data || [])
+    : []
+  const followedCompanies = followedCompaniesResult.status === 'fulfilled'
+    ? (followedCompaniesResult.value?.data?.data || [])
+    : []
+
+  const applicationItems = applications
     .map((application) => {
       const baseTitle = application?.tin_tuyen_dung?.tieu_de || application?.ho_so?.tieu_de_ho_so || 'Đơn ứng tuyển'
       const companyName = application?.tin_tuyen_dung?.cong_ty?.ten_cong_ty || 'nhà tuyển dụng'
@@ -170,41 +180,11 @@ const buildCandidateNotifications = async () => {
           return createNotification({
             id: `candidate-accepted-${application.id}-${application.updated_at || application.thoi_gian_ung_tuyen}`,
             title: 'Chúc mừng, bạn đã trúng tuyển',
-            message: `${companyName} đã xác nhận bạn phù hợp cho vị trí ${baseTitle} và có thể gửi offer ở bước tiếp theo.`,
+            message: `${companyName} đã chốt kết quả trúng tuyển cho vị trí ${baseTitle}.`,
             time: appliedTime,
             to: '/applications',
             icon: 'task_alt',
             tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-          })
-        case APPLICATION_STATUS.OFFER_SENT:
-          return createNotification({
-            id: `candidate-offer-sent-${application.id}-${application.thoi_gian_gui_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
-            title: 'Bạn đã nhận được offer',
-            message: `${companyName} đã gửi đề nghị nhận việc cho vị trí ${baseTitle}.`,
-            time: application.thoi_gian_gui_offer || appliedTime,
-            to: '/applications',
-            icon: 'mail',
-            tone: 'bg-teal-500/10 text-teal-600 dark:text-teal-300',
-          })
-        case APPLICATION_STATUS.ONBOARDED:
-          return createNotification({
-            id: `candidate-onboarded-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
-            title: 'Bạn đã xác nhận nhận việc',
-            message: `Bạn đã chấp nhận offer cho vị trí ${baseTitle} tại ${companyName}.`,
-            time: application.thoi_gian_phan_hoi_offer || appliedTime,
-            to: '/applications',
-            icon: 'handshake',
-            tone: 'bg-green-600/10 text-green-600 dark:text-green-300',
-          })
-        case APPLICATION_STATUS.OFFER_DECLINED:
-          return createNotification({
-            id: `candidate-offer-declined-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
-            title: 'Bạn đã từ chối offer',
-            message: `Bạn đã phản hồi từ chối đề nghị nhận việc cho vị trí ${baseTitle} tại ${companyName}.`,
-            time: application.thoi_gian_phan_hoi_offer || appliedTime,
-            to: '/applications',
-            icon: 'cancel',
-            tone: 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
           })
         case APPLICATION_STATUS.REJECTED:
           return createNotification({
@@ -221,6 +201,33 @@ const buildCandidateNotifications = async () => {
       }
     })
     .filter(Boolean)
+
+  const followItems = followedCompanies
+    .flatMap((company) => {
+      const followedAt = normalizeTimestamp(company?.theo_doi_luc)
+      const companyName = company?.ten_cong_ty || 'Công ty bạn đang theo dõi'
+
+      return (company?.tin_tuyen_dungs || [])
+        .filter((job) => {
+          const createdAt = normalizeTimestamp(job?.created_at)
+          if (!createdAt) return false
+          if (followedAt && createdAt < followedAt) return false
+          return Number(job?.trang_thai) === 1
+        })
+        .map((job) =>
+          createNotification({
+            id: `candidate-followed-company-job-${company.id}-${job.id}-${job.created_at}`,
+            title: 'Công ty bạn theo dõi vừa đăng job mới',
+            message: `${companyName} vừa đăng vị trí ${job.tieu_de || 'mới'}.`,
+            time: job.created_at,
+            to: `/jobs/${job.id}`,
+            icon: 'campaign',
+            tone: 'bg-[#2463eb]/10 text-[#2463eb]',
+          }),
+        )
+    })
+
+  return [...applicationItems, ...followItems]
     .sort((a, b) => normalizeTimestamp(b.time) - normalizeTimestamp(a.time))
     .slice(0, 8)
 }
@@ -292,48 +299,6 @@ const buildEmployerNotifications = async () => {
           to: '/employer/interviews',
           icon: 'task_alt',
           tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-        }),
-      )
-    }
-
-    if (Number(application?.trang_thai) === APPLICATION_STATUS.OFFER_SENT) {
-      items.push(
-        createNotification({
-          id: `employer-offer-sent-${application.id}-${application.thoi_gian_gui_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
-          title: 'Offer đã được gửi',
-          message: `${candidateName} đang chờ phản hồi đề nghị nhận việc cho vị trí ${jobTitle}.`,
-          time: application.thoi_gian_gui_offer || application.updated_at || application.thoi_gian_ung_tuyen,
-          to: '/employer/interviews',
-          icon: 'mail',
-          tone: 'bg-teal-500/10 text-teal-600 dark:text-teal-300',
-        }),
-      )
-    }
-
-    if (Number(application?.trang_thai) === APPLICATION_STATUS.ONBOARDED) {
-      items.push(
-        createNotification({
-          id: `employer-onboarded-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
-          title: 'Ứng viên đã nhận việc',
-          message: `${candidateName} đã chấp nhận offer cho vị trí ${jobTitle}.`,
-          time: application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen,
-          to: '/employer/interviews',
-          icon: 'handshake',
-          tone: 'bg-green-600/10 text-green-600 dark:text-green-300',
-        }),
-      )
-    }
-
-    if (Number(application?.trang_thai) === APPLICATION_STATUS.OFFER_DECLINED) {
-      items.push(
-        createNotification({
-          id: `employer-offer-declined-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
-          title: 'Offer đã bị từ chối',
-          message: `${candidateName} đã từ chối đề nghị nhận việc cho vị trí ${jobTitle}.`,
-          time: application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen,
-          to: '/employer/interviews',
-          icon: 'warning',
-          tone: 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
         }),
       )
     }

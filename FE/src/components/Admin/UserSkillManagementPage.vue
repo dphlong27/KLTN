@@ -159,7 +159,6 @@ const loadUserSkills = async () => {
   } catch (err) {
     rawRecords.value = []
     error.value = err.message || 'Không thể tải kỹ năng người dùng.'
-    notify.apiError(err, 'Không thể tải kỹ năng người dùng.')
   } finally {
     loading.value = false
   }
@@ -329,10 +328,11 @@ onMounted(async () => {
 
   <div
     v-if="showDetailModal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+    class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 backdrop-blur-sm"
     @click.self="showDetailModal = false"
   >
-    <div class="w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+    <div class="flex min-h-full items-center justify-center px-4 py-6">
+      <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
       <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Kỹ năng người dùng</p>
@@ -348,11 +348,11 @@ onMounted(async () => {
         </button>
       </div>
 
-      <div v-if="detailLoading" class="space-y-4 px-6 py-6">
+      <div v-if="detailLoading" class="flex-1 space-y-4 overflow-y-auto px-6 py-6">
         <div v-for="index in 4" :key="index" class="h-20 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
       </div>
 
-      <div v-else class="px-6 py-6">
+      <div v-else class="flex-1 overflow-y-auto px-6 py-6">
         <div v-if="!userSkills.length" class="rounded-2xl border border-dashed border-slate-200 px-5 py-10 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
           Người dùng này chưa có kỹ năng nào được khai báo.
         </div>
@@ -380,6 +380,7 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+    </div>
     </div>
   </div>
 </template>

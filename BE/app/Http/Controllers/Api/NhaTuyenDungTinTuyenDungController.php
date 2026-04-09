@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Api\Concerns\ResolvesEmployerCompany;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\TinTuyenDung\TaoTinTuyenDungRequest;
 use App\Http\Requests\TinTuyenDung\CapNhatTinTuyenDungRequest;
-use App\Models\CongTy;
 use App\Models\TinTuyenDung;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,12 +15,14 @@ use Illuminate\Http\Request;
  */
 class NhaTuyenDungTinTuyenDungController extends Controller
 {
+    use ResolvesEmployerCompany;
+
     /**
      * Lấy ID công ty của NTD đang đăng nhập.
      */
     private function getCongTyId(): ?int
     {
-        return CongTy::where('nguoi_dung_id', auth()->id())->value('id');
+        return $this->getCurrentEmployerCompany()?->id;
     }
 
     /**

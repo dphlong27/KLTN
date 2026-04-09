@@ -137,12 +137,6 @@ const routes = [
     component: () => import('@/components/Guest/SkillDetailPage.vue'),
     meta: { layout: 'guest' }
   },
-  {
-    path: '/ai-career',
-    name: 'AICareer',
-    component: () => import('@/components/Guest/AICareerPage.vue'),
-    meta: { layout: 'guest' }
-  },
   // Dashboard pages (Job Seeker)
   {
     path: '/dashboard',
@@ -163,12 +157,6 @@ const routes = [
     meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
   },
   {
-    path: '/cv-builder',
-    name: 'CvBuilder',
-    component: () => import('@/components/Dashboard/CvBuilderPage.vue'),
-    meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
-  },
-  {
     path: '/my-skills',
     name: 'MySkills',
     component: () => import('@/components/Dashboard/MySkillsPage.vue'),
@@ -184,6 +172,12 @@ const routes = [
     path: '/saved-jobs',
     name: 'SavedJobs',
     component: () => import('@/components/Dashboard/SavedJobsPage.vue'),
+    meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
+  },
+  {
+    path: '/followed-companies',
+    name: 'FollowedCompanies',
+    component: () => import('@/components/Dashboard/FollowedCompaniesPage.vue'),
     meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
   },
   {
@@ -251,6 +245,12 @@ const routes = [
     path: '/employer/company',
     name: 'EmployerCompany',
     component: () => import('@/components/Employer/EmployerCompanyPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
+  },
+  {
+    path: '/employer/profile',
+    name: 'EmployerProfile',
+    component: () => import('@/components/Employer/EmployerProfilePage.vue'),
     meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
   },
   // Admin pages

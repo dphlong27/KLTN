@@ -769,6 +769,11 @@ export const employerCompanyService = {
       method: 'GET'
     }),
 
+  getMembers: () =>
+    apiCall('/nha-tuyen-dung/cong-ty/thanh-viens', {
+      method: 'GET'
+    }),
+
   createCompany: (data) =>
     apiCall('/nha-tuyen-dung/cong-ty', {
       method: 'POST',
@@ -797,6 +802,17 @@ export const employerCompanyService = {
         body: JSON.stringify(data)
       })
     })(),
+
+  addMember: (email) =>
+    apiCall('/nha-tuyen-dung/cong-ty/thanh-viens', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  removeMember: (memberId) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}`, {
+      method: 'DELETE',
+    }),
 }
 
 export const employerJobService = {
@@ -901,17 +917,6 @@ export const employerApplicationService = {
     apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-lai-email-phong-van`, {
       method: 'POST',
     }),
-
-  sendInterviewReminder: (id) =>
-    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-nhac-lich-phong-van`, {
-      method: 'POST',
-    }),
-
-  sendOffer: (id, data) =>
-    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-offer`, {
-      method: 'POST',
-      body: JSON.stringify(data || {}),
-    }),
 }
 
 // === Public Job APIs ===
@@ -971,6 +976,7 @@ export const jobService = {
     const params = new URLSearchParams()
 
     if (options.search) params.append('search', options.search)
+    if (options.page) params.append('page', options.page)
     if (options.per_page !== undefined) params.append('per_page', options.per_page)
 
     const query = params.toString()
@@ -1013,6 +1019,27 @@ export const savedJobService = {
     apiCall(`/ung-vien/tin-da-luu/${jobId}/toggle`, {
       method: 'POST'
     })
+}
+
+// === Candidate Follow Company APIs ===
+export const followCompanyService = {
+  getFollowedCompanies: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.recent_jobs_limit) params.append('recent_jobs_limit', options.recent_jobs_limit)
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/cong-ty-theo-doi${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  toggleFollowCompany: (companyId) =>
+    apiCall(`/ung-vien/cong-ty-theo-doi/${companyId}/toggle`, {
+      method: 'POST',
+    }),
 }
 
 // === Candidate Profile APIs ===
@@ -1161,12 +1188,6 @@ export const applicationService = {
       body: JSON.stringify({
         trang_thai_tham_gia_phong_van,
       })
-    }),
-
-  respondOffer: (id, action) =>
-    apiCall(`/ung-vien/ung-tuyens/${id}/phan-hoi-offer`, {
-      method: 'PATCH',
-      body: JSON.stringify({ action }),
     }),
 
   withdrawApplication: (id) =>
@@ -1367,6 +1388,7 @@ export default {
   companyService,
   jobService,
   savedJobService,
+  followCompanyService,
   profileService,
   applicationService,
   matchingService,

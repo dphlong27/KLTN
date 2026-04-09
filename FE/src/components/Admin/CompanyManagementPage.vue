@@ -155,7 +155,6 @@ const loadCompanies = async () => {
     totalCompanies.value = total
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách công ty'
-    notify.apiError(err, 'Không thể tải danh sách công ty.')
   } finally {
     loading.value = false
   }
@@ -189,7 +188,6 @@ const submitForm = async () => {
     notify.success('Đã cập nhật công ty')
   } catch (err) {
     error.value = err.message || 'Lỗi lưu công ty'
-    notify.apiError(err, 'Không thể lưu công ty.')
   } finally {
     saving.value = false
   }
@@ -211,7 +209,6 @@ const deleteCompany = async () => {
     notify.success('Đã xóa công ty')
   } catch (err) {
     error.value = err.message || 'Lỗi xóa công ty'
-    notify.apiError(err, 'Không thể xóa công ty.')
   }
 }
 
@@ -224,7 +221,6 @@ const toggleStatus = async (companyId) => {
     notify.success('Đã cập nhật trạng thái công ty')
   } catch (err) {
     error.value = err.message || 'Lỗi cập nhật trạng thái'
-    notify.apiError(err, 'Không thể cập nhật trạng thái công ty.')
   }
 }
 

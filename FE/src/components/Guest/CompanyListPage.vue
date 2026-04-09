@@ -14,7 +14,7 @@ const totalCompanies = ref(0)
 const filters = ref({
   search: route.query.search || '',
   page: Number(route.query.page || 1),
-  perPage: Number(route.query.per_page || 8),
+  perPage: Number(route.query.per_page || 9),
 })
 
 const extractList = (response) => {
@@ -25,6 +25,10 @@ const extractList = (response) => {
 }
 
 const totalPages = computed(() => Math.max(1, Math.ceil(totalCompanies.value / filters.value.perPage)))
+const summaryText = computed(() => {
+  if (!totalCompanies.value) return 'Chưa có công ty nào để hiển thị'
+  return `Hiển thị ${companies.value.length} / ${totalCompanies.value} công ty`
+})
 
 const syncRoute = () => {
   router.replace({
@@ -75,7 +79,7 @@ watch(
   (query) => {
     filters.value.search = query.search || ''
     filters.value.page = Number(query.page || 1)
-    filters.value.perPage = Number(query.per_page || 8)
+    filters.value.perPage = Number(query.per_page || 9)
   },
 )
 
@@ -109,15 +113,15 @@ onMounted(loadCompanies)
           </div>
 
           <label class="rounded-2xl border border-slate-200 bg-slate-50 px-4 dark:border-slate-800 dark:bg-slate-950">
-            <span class="block pt-3 text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Số dòng / trang</span>
-            <select
+            <span class="block pt-3 text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Số công ty / trang</span>
+            <select 
               v-model="filters.perPage"
               class="w-full border-none bg-transparent py-3 text-slate-900 outline-none ring-0 focus:ring-0 dark:text-white"
               @change="applyFilters"
             >
-              <option :value="8">8</option>
+              <option :value="9">9</option>
               <option :value="12">12</option>
-              <option :value="16">16</option>
+              <option :value="18">18</option>
             </select>
           </label>
 
@@ -132,7 +136,7 @@ onMounted(loadCompanies)
       </div>
 
       <div class="mt-6 flex flex-col gap-3 text-sm text-slate-500 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-        <p>{{ totalCompanies }} công ty đang hiển thị</p>
+        <p>{{ summaryText }}</p>
         <RouterLink to="/" class="font-semibold text-[#2463eb] hover:underline">Quay lại trang chủ</RouterLink>
       </div>
 

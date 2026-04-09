@@ -16,9 +16,6 @@ const notify = useNotify()
 const loading = ref(false)
 const saving = ref(false)
 const resendingEmailId = ref(null)
-const sendingReminderId = ref(null)
-const sendingOfferId = ref(null)
-const exportingCalendarId = ref(null)
 const applications = ref([])
 const jobs = ref([])
 const pagination = ref(null)
@@ -38,14 +35,10 @@ const filters = reactive({
 const form = reactive({
   trang_thai: 0,
   ngay_hen_phong_van: '',
-  vong_phong_van_hien_tai: '',
   hinh_thuc_phong_van: '',
   nguoi_phong_van: '',
   link_phong_van: '',
   ket_qua_phong_van: '',
-  rubric_danh_gia_phong_van: '',
-  ghi_chu_offer: '',
-  link_offer: '',
   ghi_chu: '',
 })
 
@@ -59,11 +52,7 @@ const stats = computed(() => {
   const pending = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.PENDING).length
   const reviewed = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.REVIEWED).length
   const scheduled = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.INTERVIEW_SCHEDULED).length
-  const offerPipeline = all.filter((item) => [
-    APPLICATION_STATUS.HIRED,
-    APPLICATION_STATUS.OFFER_SENT,
-    APPLICATION_STATUS.ONBOARDED,
-  ].includes(Number(item.trang_thai))).length
+  const hired = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.HIRED).length
 
   return [
     {
@@ -88,10 +77,10 @@ const stats = computed(() => {
       tone: 'text-violet-300 bg-violet-500/10',
     },
     {
-      label: 'Offer & nhận việc',
-      value: offerPipeline,
-      hint: 'Các hồ sơ đang ở giai đoạn trúng tuyển, gửi offer hoặc đã nhận việc.',
-      icon: 'handshake',
+      label: 'Trúng tuyển',
+      value: hired,
+      hint: 'Các hồ sơ đã có kết quả tuyển dụng cuối cùng.',
+      icon: 'task_alt',
       tone: 'text-emerald-300 bg-emerald-500/10',
     },
   ]
@@ -120,23 +109,6 @@ const interviewModeLabel = (value) => {
 
   return labels[value] || 'Chưa cập nhật'
 }
-
-const interviewRoundLabel = (value) => {
-  const labels = {
-    hr: 'Vòng HR',
-    technical: 'Vòng Technical',
-    final: 'Vòng Final',
-  }
-
-  return labels[value] || 'Chưa cập nhật'
-}
-
-const interviewRoundOptions = [
-  { value: '', label: 'Chưa chọn vòng' },
-  { value: 'hr', label: 'Vòng HR' },
-  { value: 'technical', label: 'Vòng Technical' },
-  { value: 'final', label: 'Vòng Final' },
-]
 
 const interviewAttendanceMeta = (value) => {
   const labels = {
@@ -190,11 +162,6 @@ const formatDateTimeInput = (value) => {
 
 const isFinalApplicationStatus = (application) => isFinalApplicationStatusValue(application?.trang_thai)
 
-const isOfferResolved = (application) => [
-  APPLICATION_STATUS.ONBOARDED,
-  APPLICATION_STATUS.OFFER_DECLINED,
-].includes(Number(application?.trang_thai))
-
 const canEmployerUpdateApplication = (application) => !application?.da_rut_don
 
 const canResendInterviewEmail = (application) =>
@@ -203,36 +170,16 @@ const canResendInterviewEmail = (application) =>
   && !application?.da_rut_don
   && !isFinalApplicationStatus(application)
 
-const canSendInterviewReminder = (application) =>
-  Boolean(application?.id)
-  && Boolean(application?.ngay_hen_phong_van)
-  && !application?.da_rut_don
-  && !isFinalApplicationStatus(application)
-
-const canExportInterviewCalendar = (application) =>
-  Boolean(application?.id) && Boolean(application?.ngay_hen_phong_van)
-
-const canSendOffer = (application) =>
-  Boolean(application?.id)
-  && !application?.da_rut_don
-  && [APPLICATION_STATUS.HIRED, APPLICATION_STATUS.OFFER_SENT].includes(Number(application?.trang_thai))
-  && !isOfferResolved(application)
-
 const statusOptionsForSelectedApplication = computed(() => {
   if (!selectedApplication.value) return statusOptions.slice(1)
 
-  const allowedStatuses = statusOptions.slice(1).filter((status) => ![
-    APPLICATION_STATUS.OFFER_SENT,
-    APPLICATION_STATUS.ONBOARDED,
-    APPLICATION_STATUS.OFFER_DECLINED,
-  ].includes(Number(status.value)))
-
   if (isFinalApplicationStatus(selectedApplication.value)) {
-    return allowedStatuses
+    return statusOptions
+      .slice(1)
       .filter(status => Number(status.value) === Number(selectedApplication.value?.trang_thai))
   }
 
-  return allowedStatuses
+  return statusOptions.slice(1)
 })
 
 const fetchJobs = async () => {
@@ -288,14 +235,10 @@ const openModal = (application) => {
   selectedApplication.value = application
   form.trang_thai = Number(application.trang_thai ?? 0)
   form.ngay_hen_phong_van = formatDateTimeInput(application.ngay_hen_phong_van)
-  form.vong_phong_van_hien_tai = application.vong_phong_van_hien_tai || ''
   form.hinh_thuc_phong_van = application.hinh_thuc_phong_van || ''
   form.nguoi_phong_van = application.nguoi_phong_van || ''
   form.link_phong_van = application.link_phong_van || ''
   form.ket_qua_phong_van = application.ket_qua_phong_van || ''
-  form.rubric_danh_gia_phong_van = application.rubric_danh_gia_phong_van || ''
-  form.ghi_chu_offer = application.ghi_chu_offer || ''
-  form.link_offer = application.link_offer || ''
   form.ghi_chu = application.ghi_chu || ''
   modalOpen.value = true
 }
@@ -305,14 +248,10 @@ const closeModal = () => {
   selectedApplication.value = null
   form.trang_thai = 0
   form.ngay_hen_phong_van = ''
-  form.vong_phong_van_hien_tai = ''
   form.hinh_thuc_phong_van = ''
   form.nguoi_phong_van = ''
   form.link_phong_van = ''
   form.ket_qua_phong_van = ''
-  form.rubric_danh_gia_phong_van = ''
-  form.ghi_chu_offer = ''
-  form.link_offer = ''
   form.ghi_chu = ''
 }
 
@@ -394,12 +333,10 @@ const saveApplication = async () => {
     await employerApplicationService.updateStatus(selectedApplication.value.id, {
       trang_thai: Number(form.trang_thai),
       ngay_hen_phong_van: form.ngay_hen_phong_van || null,
-      vong_phong_van_hien_tai: form.vong_phong_van_hien_tai || null,
       hinh_thuc_phong_van: form.hinh_thuc_phong_van || null,
       nguoi_phong_van: form.nguoi_phong_van || null,
       link_phong_van: form.link_phong_van || null,
       ket_qua_phong_van: form.ket_qua_phong_van || null,
-      rubric_danh_gia_phong_van: form.rubric_danh_gia_phong_van || null,
       ghi_chu: form.ghi_chu || null,
     })
 
@@ -412,87 +349,6 @@ const saveApplication = async () => {
     saving.value = false
   }
 }
-
-const sendInterviewReminder = async (application) => {
-  if (!canSendInterviewReminder(application)) {
-    notify.info('Đơn này hiện không phù hợp để gửi nhắc lịch.')
-    return
-  }
-
-  sendingReminderId.value = application.id
-  try {
-    await employerApplicationService.sendInterviewReminder(application.id)
-    notify.success('Đã gửi email nhắc lịch phỏng vấn.')
-    await fetchApplications()
-  } catch (error) {
-    notify.apiError(error, 'Không gửi được email nhắc lịch.')
-  } finally {
-    sendingReminderId.value = null
-  }
-}
-
-const sendOffer = async () => {
-  if (!selectedApplication.value || sendingOfferId.value) return
-
-  sendingOfferId.value = selectedApplication.value.id
-  try {
-    await employerApplicationService.sendOffer(selectedApplication.value.id, {
-      ghi_chu_offer: form.ghi_chu_offer || null,
-      link_offer: form.link_offer || null,
-    })
-    notify.success('Đã gửi offer cho ứng viên.')
-    closeModal()
-    await fetchApplications()
-  } catch (error) {
-    notify.apiError(error, 'Không gửi được offer cho ứng viên.')
-  } finally {
-    sendingOfferId.value = null
-  }
-}
-
-const downloadInterviewCalendar = async (application) => {
-  if (!canExportInterviewCalendar(application) || exportingCalendarId.value) {
-    return
-  }
-
-  const token = getAuthToken()
-  if (!token) {
-    notify.warning('Vui lòng đăng nhập lại để tải file lịch.')
-    return
-  }
-
-  exportingCalendarId.value = application.id
-  try {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/nha-tuyen-dung/ung-tuyens/${application.id}/calendar`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
-    }
-
-    const blob = await response.blob()
-    const objectUrl = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = objectUrl
-    link.download = `interview-${application.id}.ics`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(objectUrl)
-  } catch (error) {
-    notify.apiError(error, 'Không tải được file lịch phỏng vấn.')
-  } finally {
-    exportingCalendarId.value = null
-  }
-}
-
-const historyEntries = (application) =>
-  [...(application?.lich_su_xu_ly || [])]
-    .sort((a, b) => new Date(b?.at || 0) - new Date(a?.at || 0))
 
 const resendInterviewEmail = async (application) => {
   if (!canResendInterviewEmail(application)) {
@@ -664,26 +520,6 @@ onMounted(async () => {
                     {{ resendingEmailId === application.id ? 'Đang gửi...' : 'Gửi lại email' }}
                   </button>
                   <button
-                    v-if="canSendInterviewReminder(application)"
-                    class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-700 transition hover:bg-violet-100 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/15"
-                    :disabled="sendingReminderId === application.id"
-                    type="button"
-                    @click="sendInterviewReminder(application)"
-                  >
-                    <span class="material-symbols-outlined text-[18px]">{{ sendingReminderId === application.id ? 'progress_activity' : 'notifications_active' }}</span>
-                    {{ sendingReminderId === application.id ? 'Đang gửi...' : 'Nhắc lịch' }}
-                  </button>
-                  <button
-                    v-if="canExportInterviewCalendar(application)"
-                    class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 text-sm font-bold text-sky-700 transition hover:bg-sky-100 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300 dark:hover:bg-sky-500/15"
-                    :disabled="exportingCalendarId === application.id"
-                    type="button"
-                    @click="downloadInterviewCalendar(application)"
-                  >
-                    <span class="material-symbols-outlined text-[18px]">download</span>
-                    {{ exportingCalendarId === application.id ? 'Đang tải...' : 'Xuất lịch' }}
-                  </button>
-                  <button
                     class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
                     type="button"
                     @click="openCandidateDetail(application)"
@@ -726,10 +562,8 @@ onMounted(async () => {
                   </p>
                 </div>
                 <div class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
-                  <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Vòng / hình thức</p>
+                  <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Hình thức</p>
                   <p class="mt-2 text-sm font-semibold leading-7 text-slate-900 dark:text-white">
-                    {{ interviewRoundLabel(application.vong_phong_van_hien_tai) }}
-                    <span class="text-slate-400">•</span>
                     {{ interviewModeLabel(application.hinh_thuc_phong_van) }}
                   </p>
                 </div>
@@ -778,33 +612,6 @@ onMounted(async () => {
                 <span class="ml-2">{{ application.ket_qua_phong_van }}</span>
               </div>
 
-              <div v-if="application.rubric_danh_gia_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
-                <span class="font-semibold text-slate-900 dark:text-white">Rubric đánh giá:</span>
-                <span class="ml-2">{{ application.rubric_danh_gia_phong_van }}</span>
-              </div>
-
-              <div
-                v-if="[APPLICATION_STATUS.OFFER_SENT, APPLICATION_STATUS.ONBOARDED, APPLICATION_STATUS.OFFER_DECLINED].includes(Number(application.trang_thai))"
-                class="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-slate-700 dark:bg-emerald-500/10 dark:text-slate-200"
-              >
-                <div class="flex flex-wrap items-center gap-2">
-                  <span class="font-semibold text-slate-900 dark:text-white">Offer:</span>
-                  <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold" :class="statusMeta(application.trang_thai).classes">
-                    {{ statusMeta(application.trang_thai).label }}
-                  </span>
-                </div>
-                <p v-if="application.ghi_chu_offer" class="mt-2 leading-6">{{ application.ghi_chu_offer }}</p>
-                <p v-if="application.link_offer" class="mt-2 break-all">
-                  <a :href="application.link_offer" class="text-[#2463eb] hover:underline" target="_blank" rel="noopener noreferrer">
-                    {{ application.link_offer }}
-                  </a>
-                </p>
-                <p v-if="application.thoi_gian_gui_offer" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Gửi lúc {{ formatDateTime(application.thoi_gian_gui_offer) }}
-                  <span v-if="application.thoi_gian_phan_hoi_offer">• Phản hồi lúc {{ formatDateTime(application.thoi_gian_phan_hoi_offer) }}</span>
-                </p>
-              </div>
-
               <p class="text-sm leading-7 text-slate-500 dark:text-slate-400">
                 {{ application.ghi_chu || 'Chưa có ghi chú xử lý cho hồ sơ này.' }}
               </p>
@@ -814,18 +621,6 @@ onMounted(async () => {
               >
                 Ứng viên đã rút đơn lúc {{ formatDateTime(application.thoi_gian_rut_don) }}.
               </p>
-
-              <div v-if="historyEntries(application).length" class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/60">
-                <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Lịch sử xử lý</p>
-                <div class="mt-3 space-y-3">
-                  <div v-for="entry in historyEntries(application).slice(0, 5)" :key="`${entry.at}-${entry.event}`" class="border-l-2 border-[#2463eb]/20 pl-3">
-                    <p class="text-sm font-semibold text-slate-900 dark:text-white">{{ entry.message }}</p>
-                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {{ entry.actor?.name || 'Hệ thống' }} • {{ formatDateTime(entry.at) }}
-                    </p>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -913,9 +708,9 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-if="modalOpen" class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
-      <div class="mx-auto flex min-h-full items-center justify-center">
-      <div class="flex w-full max-w-2xl max-h-[calc(100vh-3rem)] flex-col rounded-3xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_30px_80px_rgba(15,23,42,0.55)]">
+    <div v-if="modalOpen" class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-sm">
+      <div class="flex min-h-full items-center justify-center px-4 py-6">
+        <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_30px_80px_rgba(15,23,42,0.55)]">
         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
           <div>
             <h3 class="text-xl font-bold text-slate-900 dark:text-white">Cập nhật ứng tuyển</h3>
@@ -928,7 +723,7 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div class="grid flex-1 overflow-y-auto grid-cols-1 gap-5 p-6 md:grid-cols-2">
+        <div class="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 md:grid-cols-2">
           <div class="md:col-span-2">
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Trạng thái</label>
             <select
@@ -945,18 +740,6 @@ onMounted(async () => {
             >
               Đơn này đã có kết quả cuối, bạn chỉ có thể cập nhật ghi chú nội bộ hoặc thông tin bổ sung mà không đổi trạng thái.
             </p>
-          </div>
-
-          <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Vòng phỏng vấn</label>
-            <select
-              v-model="form.vong_phong_van_hien_tai"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
-            >
-              <option v-for="round in interviewRoundOptions" :key="round.value || 'empty-round'" :value="round.value">
-                {{ round.label }}
-              </option>
-            </select>
           </div>
 
           <div class="md:col-span-2">
@@ -1012,52 +795,12 @@ onMounted(async () => {
           </div>
 
           <div class="md:col-span-2">
-            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Rubric đánh giá</label>
-            <textarea
-              v-model="form.rubric_danh_gia_phong_van"
-              class="min-h-[100px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
-              placeholder="Ví dụ: Kiến thức nền 8/10, giao tiếp 7/10, problem solving 8/10..."
-            />
-          </div>
-
-          <div class="md:col-span-2">
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ghi chú</label>
             <textarea
               v-model="form.ghi_chu"
               class="min-h-[130px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
               placeholder="Ghi chú nội bộ về hồ sơ, phản hồi sau buổi phỏng vấn hoặc bước tiếp theo..."
             />
-          </div>
-
-          <div
-            v-if="selectedApplication && [APPLICATION_STATUS.HIRED, APPLICATION_STATUS.OFFER_SENT].includes(Number(selectedApplication.trang_thai))"
-            class="md:col-span-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10"
-          >
-            <p class="text-sm font-bold text-slate-900 dark:text-white">Gửi offer cho ứng viên</p>
-            <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Dùng phần này để gửi hoặc gửi lại đề nghị nhận việc sau khi hồ sơ đã trúng tuyển.
-            </p>
-
-            <div class="mt-4 space-y-4">
-              <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Tóm tắt offer</label>
-                <textarea
-                  v-model="form.ghi_chu_offer"
-                  class="min-h-[110px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                  placeholder="Ví dụ: Mức lương, ngày bắt đầu, thử việc, người liên hệ..."
-                />
-              </div>
-
-              <div>
-                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link tài liệu offer</label>
-                <input
-                  v-model="form.link_offer"
-                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-950 dark:text-white"
-                  placeholder="https://..."
-                  type="text"
-                >
-              </div>
-            </div>
           </div>
         </div>
 
@@ -1070,15 +813,6 @@ onMounted(async () => {
             @click="resendInterviewEmail(selectedApplication)"
           >
             {{ resendingEmailId === selectedApplication?.id ? 'Đang gửi lại...' : 'Gửi lại email lịch hẹn' }}
-          </button>
-          <button
-            v-if="selectedApplication && canSendOffer(selectedApplication)"
-            class="rounded-2xl border border-teal-500/20 bg-teal-500/10 px-5 py-3 text-sm font-bold text-teal-300 transition hover:bg-teal-500/15 disabled:opacity-60"
-            :disabled="sendingOfferId === selectedApplication?.id"
-            type="button"
-            @click="sendOffer"
-          >
-            {{ sendingOfferId === selectedApplication?.id ? 'Đang gửi offer...' : (Number(selectedApplication?.trang_thai) === APPLICATION_STATUS.OFFER_SENT ? 'Gửi lại offer' : 'Gửi offer') }}
           </button>
           <button
             class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
@@ -1101,9 +835,9 @@ onMounted(async () => {
       </div>
     </div>
 
-    <div v-if="candidateDetailOpen" class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 px-4 py-6 backdrop-blur-sm">
-      <div class="mx-auto flex min-h-full items-center justify-center">
-      <div class="flex w-full max-w-3xl max-h-[calc(100vh-3rem)] flex-col rounded-3xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_30px_80px_rgba(15,23,42,0.55)]">
+    <div v-if="candidateDetailOpen" class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/60 backdrop-blur-sm">
+      <div class="flex min-h-full items-center justify-center px-4 py-6">
+        <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.18)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_30px_80px_rgba(15,23,42,0.55)]">
         <div class="flex items-center justify-between border-b border-slate-200 px-6 py-5 dark:border-slate-800">
           <div>
             <h3 class="text-xl font-bold text-slate-900 dark:text-white">Chi tiết hồ sơ ứng viên</h3>
@@ -1116,11 +850,11 @@ onMounted(async () => {
           </button>
         </div>
 
-        <div v-if="candidateDetailLoading" class="flex-1 overflow-y-auto space-y-4 px-6 py-6">
+        <div v-if="candidateDetailLoading" class="flex-1 space-y-4 overflow-y-auto px-6 py-6">
           <div v-for="index in 4" :key="index" class="h-20 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
         </div>
 
-        <div v-else-if="candidateDetail" class="grid flex-1 overflow-y-auto grid-cols-1 gap-5 p-6 md:grid-cols-2">
+        <div v-else-if="candidateDetail" class="grid flex-1 grid-cols-1 gap-5 overflow-y-auto p-6 md:grid-cols-2">
           <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/60">
             <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
               <div>

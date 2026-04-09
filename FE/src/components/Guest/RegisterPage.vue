@@ -2,7 +2,6 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
-import { extractApiErrorMessage, extractApiFieldErrors } from '@/utils/apiErrors'
 
 const router = useRouter()
 const route = useRoute()
@@ -76,18 +75,6 @@ const clearValidationErrors = () => {
   registerErrors.phone = ''
   registerErrors.password = ''
   registerErrors.confirmPassword = ''
-}
-
-const applyBackendErrors = (error) => {
-  const fieldErrors = extractApiFieldErrors(error)
-
-  registerErrors.fullName = fieldErrors.ho_ten?.[0] || ''
-  registerErrors.companyName = fieldErrors.ten_cong_ty?.[0] || ''
-  registerErrors.contactPerson = fieldErrors.nguoi_lien_he?.[0] || fieldErrors.ho_ten?.[0] || ''
-  registerErrors.email = fieldErrors.email?.[0] || ''
-  registerErrors.phone = fieldErrors.so_dien_thoai?.[0] || ''
-  registerErrors.password = fieldErrors.mat_khau?.[0] || ''
-  registerErrors.confirmPassword = fieldErrors.mat_khau_confirmation?.[0] || ''
 }
 
 watch(
@@ -208,8 +195,7 @@ const handleRegister = async () => {
       }, 1200)
     }
   } catch (error) {
-    applyBackendErrors(error)
-    errorMessage.value = extractApiErrorMessage(error, 'Đăng ký thất bại')
+    errorMessage.value = error.message || 'Đăng ký thất bại'
   } finally {
     isLoading.value = false
   }

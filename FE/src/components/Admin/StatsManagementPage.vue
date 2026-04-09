@@ -110,7 +110,6 @@ const loadStats = async () => {
     careerStats.value = careerStatsResponse?.data || []
   } catch (err) {
     error.value = err.message || 'Không thể tải thống kê hệ thống'
-    notify.apiError(err, 'Không thể tải thống kê hệ thống.')
   } finally {
     loading.value = false
   }

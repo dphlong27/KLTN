@@ -154,13 +154,13 @@ onMounted(fetchDashboard)
           </div>
           <span class="rounded-full bg-[#2463eb]/10 px-3 py-1 text-xs font-bold text-[#2463eb]">Live trend</span>
         </div>
-        <div class="flex min-h-[320px] items-end justify-between gap-3">
+        <div class="flex h-[320px] items-end justify-between gap-3">
           <div
             v-for="item in monthlyTrend"
             :key="item.label"
-            class="flex flex-1 flex-col items-center gap-3"
+            class="flex h-full flex-1 flex-col items-center gap-3"
           >
-            <div class="flex w-full items-end justify-center rounded-t-xl bg-[#2463eb]/10 px-1 transition-all hover:bg-[#2463eb]/15">
+            <div class="flex w-full flex-1 items-end justify-center rounded-t-xl bg-[#2463eb]/10 px-1 transition-all hover:bg-[#2463eb]/15">
               <div class="w-full rounded-t-xl bg-[#2463eb]" :style="{ height: item.height }"></div>
             </div>
             <div class="text-center">

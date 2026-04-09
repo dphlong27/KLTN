@@ -60,6 +60,16 @@ class CongTy extends Model
     }
 
     /**
+     * Danh sách HR thuộc công ty.
+     */
+    public function thanhViens()
+    {
+        return $this->belongsToMany(NguoiDung::class, 'cong_ty_nguoi_dungs', 'cong_ty_id', 'nguoi_dung_id')
+            ->withPivot('id', 'vai_tro_noi_bo', 'duoc_tao_boi')
+            ->withTimestamps();
+    }
+
+    /**
      * Ngành nghề chính.
      */
     public function nganhNghe()
@@ -73,6 +83,15 @@ class CongTy extends Model
     public function tinTuyenDungs()
     {
         return $this->hasMany(\App\Models\TinTuyenDung::class, 'cong_ty_id');
+    }
+
+    /**
+     * Danh sách ứng viên đang theo dõi công ty.
+     */
+    public function nguoiDungTheoDois()
+    {
+        return $this->belongsToMany(NguoiDung::class, 'theo_doi_cong_tys', 'cong_ty_id', 'nguoi_dung_id')
+            ->withTimestamps();
     }
 
     // ==========================================

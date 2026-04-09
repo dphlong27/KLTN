@@ -1,7 +1,6 @@
 <script setup>
 import { reactive, ref } from 'vue'
 import { authService } from '@/services/api'
-import { extractApiErrorMessage } from '@/utils/apiErrors'
 
 const isLoading = ref(false)
 const errorMessage = ref('')
@@ -38,7 +37,7 @@ const handleForgotPassword = async () => {
     const response = await authService.forgotPassword(forgotForm.email)
     successMessage.value = response?.message || 'Nếu email tồn tại trong hệ thống, chúng tôi đã gửi liên kết đặt lại mật khẩu.'
   } catch (error) {
-    errorMessage.value = extractApiErrorMessage(error, 'Không thể xử lý yêu cầu quên mật khẩu.')
+    errorMessage.value = error.message || 'Không thể xử lý yêu cầu quên mật khẩu.'
   } finally {
     isLoading.value = false
   }

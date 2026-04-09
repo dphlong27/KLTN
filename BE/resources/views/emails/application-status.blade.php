@@ -18,10 +18,10 @@
                 {{ $isAccepted ? 'Kết quả trúng tuyển' : 'Thông báo kết quả' }}
               </div>
               <h1 style="margin:18px 0 0;font-size:30px;line-height:1.25;font-weight:800;">
-                {{ $isAccepted ? 'Chúc mừng bạn đã vượt qua vòng tuyển chọn' : 'Thông báo kết quả ứng tuyển' }}
+                {{ $isAccepted ? 'Chúc mừng bạn đã trúng tuyển' : 'Thông báo kết quả ứng tuyển' }}
               </h1>
               <p style="margin:14px 0 0;font-size:15px;line-height:1.7;opacity:0.92;">
-                {{ $isAccepted ? 'Nhà tuyển dụng đã hoàn tất đánh giá và xác nhận bạn phù hợp với vị trí ứng tuyển ở giai đoạn hiện tại.' : 'Nhà tuyển dụng đã hoàn tất đánh giá hồ sơ của bạn cho đợt tuyển dụng này.' }}
+                {{ $isAccepted ? 'Nhà tuyển dụng đã hoàn tất đánh giá và xác nhận bạn phù hợp với vị trí ứng tuyển.' : 'Nhà tuyển dụng đã hoàn tất đánh giá hồ sơ của bạn cho đợt tuyển dụng này.' }}
               </p>
             </td>
           </tr>
@@ -44,8 +44,8 @@
               <div style="margin-top:20px;padding:22px;border-radius:18px;{{ $isAccepted ? 'background:#f0fdf4;border:1px solid #bbf7d0;' : 'background:#fff7ed;border:1px solid #fed7aa;' }}">
                 <p style="margin:0;font-size:16px;line-height:1.8;color:#334155;">
                   @if ($isAccepted)
-                    Chúc mừng bạn! Sau quá trình đánh giá, nhà tuyển dụng đã xác nhận bạn <strong>phù hợp để đi tiếp tới bước đề nghị nhận việc</strong>.
-                    Vui lòng theo dõi email và khu vực ứng tuyển để cập nhật offer và những hướng dẫn tiếp theo từ doanh nghiệp.
+                    Chúc mừng bạn! Sau quá trình đánh giá, nhà tuyển dụng đã quyết định <strong>tiếp nhận bạn cho vị trí này</strong>.
+                    Vui lòng theo dõi email và khu vực ứng tuyển để cập nhật các bước tiếp theo như xác nhận nhận việc, trao đổi lịch onboarding hoặc những yêu cầu bổ sung từ doanh nghiệp.
                   @else
                     Cảm ơn bạn đã quan tâm và dành thời gian ứng tuyển vào vị trí này. Sau khi xem xét hồ sơ, nhà tuyển dụng đánh giá rằng hồ sơ của bạn <strong>chưa phù hợp nhất với nhu cầu tuyển dụng ở thời điểm hiện tại</strong>.
                     Đây không phải là đánh giá về năng lực tổng quát của bạn; rất mong bạn tiếp tục theo dõi các cơ hội khác phù hợp hơn trong thời gian tới.
@@ -56,7 +56,7 @@
               @if ($isAccepted)
                 <div style="margin-top:20px;padding:20px 22px;border-radius:18px;background:#eff6ff;border:1px solid #bfdbfe;">
                   <p style="margin:0;font-size:15px;line-height:1.8;color:#1e3a8a;">
-                    <strong>Bước tiếp theo:</strong> Hãy kiểm tra thường xuyên email và trạng thái đơn ứng tuyển trong hệ thống để không bỏ lỡ đề nghị nhận việc từ nhà tuyển dụng.
+                    <strong>Bước tiếp theo:</strong> Hãy kiểm tra thường xuyên email và trạng thái đơn ứng tuyển trong hệ thống để không bỏ lỡ các hướng dẫn tiếp theo từ nhà tuyển dụng.
                   </p>
                 </div>
               @else

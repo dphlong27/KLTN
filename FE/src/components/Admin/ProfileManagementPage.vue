@@ -172,7 +172,6 @@ const loadProfiles = async () => {
     profiles.value = []
     totalProfiles.value = 0
     error.value = err.message || 'Không thể tải danh sách hồ sơ ứng viên.'
-    notify.apiError(err, 'Không thể tải danh sách hồ sơ ứng viên.')
   } finally {
     loading.value = false
   }
@@ -588,10 +587,11 @@ onMounted(async () => {
 
   <div
     v-if="showDetailModal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+    class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 backdrop-blur-sm"
     @click.self="showDetailModal = false"
   >
-    <div class="w-full max-w-3xl rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+    <div class="flex min-h-full items-center justify-center px-4 py-6">
+      <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
       <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">Chi tiết hồ sơ</p>
@@ -610,12 +610,12 @@ onMounted(async () => {
         </button>
       </div>
 
-      <div v-if="detailLoading" class="space-y-4 px-6 py-6">
+      <div v-if="detailLoading" class="flex-1 space-y-4 overflow-y-auto px-6 py-6">
         <div class="h-20 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800"></div>
         <div class="h-32 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800"></div>
       </div>
 
-      <div v-else-if="selectedProfile" class="space-y-5 px-6 py-6">
+      <div v-else-if="selectedProfile" class="flex-1 space-y-5 overflow-y-auto px-6 py-6">
         <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div class="rounded-2xl bg-slate-50 px-4 py-4 dark:bg-slate-800">
             <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Trình độ</p>
@@ -664,6 +664,7 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+    </div>
     </div>
   </div>
 

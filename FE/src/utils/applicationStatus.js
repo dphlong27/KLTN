@@ -5,15 +5,11 @@ export const APPLICATION_STATUS = {
   INTERVIEW_PASSED: 3,
   HIRED: 4,
   REJECTED: 5,
-  OFFER_SENT: 6,
-  ONBOARDED: 7,
-  OFFER_DECLINED: 8,
 }
 
 export const FINAL_APPLICATION_STATUSES = [
+  APPLICATION_STATUS.HIRED,
   APPLICATION_STATUS.REJECTED,
-  APPLICATION_STATUS.ONBOARDED,
-  APPLICATION_STATUS.OFFER_DECLINED,
 ]
 
 export const APPLICATION_STATUS_OPTIONS = [
@@ -23,9 +19,6 @@ export const APPLICATION_STATUS_OPTIONS = [
   { value: APPLICATION_STATUS.INTERVIEW_PASSED, label: 'Qua phỏng vấn' },
   { value: APPLICATION_STATUS.HIRED, label: 'Trúng tuyển' },
   { value: APPLICATION_STATUS.REJECTED, label: 'Từ chối' },
-  { value: APPLICATION_STATUS.OFFER_SENT, label: 'Đã gửi offer' },
-  { value: APPLICATION_STATUS.ONBOARDED, label: 'Đã nhận việc' },
-  { value: APPLICATION_STATUS.OFFER_DECLINED, label: 'Từ chối offer' },
 ]
 
 export const getApplicationStatusMeta = (status) => {
@@ -53,24 +46,6 @@ export const getApplicationStatusMeta = (status) => {
         label: 'Trúng tuyển',
         classes: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
         dot: 'bg-emerald-500',
-      }
-    case APPLICATION_STATUS.OFFER_SENT:
-      return {
-        label: 'Đã gửi offer',
-        classes: 'bg-teal-500/10 text-teal-700 dark:text-teal-300',
-        dot: 'bg-teal-500',
-      }
-    case APPLICATION_STATUS.ONBOARDED:
-      return {
-        label: 'Đã nhận việc',
-        classes: 'bg-green-600/10 text-green-700 dark:text-green-300',
-        dot: 'bg-green-600',
-      }
-    case APPLICATION_STATUS.OFFER_DECLINED:
-      return {
-        label: 'Từ chối offer',
-        classes: 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
-        dot: 'bg-orange-500',
       }
     case APPLICATION_STATUS.REJECTED:
       return {

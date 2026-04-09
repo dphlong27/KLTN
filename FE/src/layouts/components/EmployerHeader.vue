@@ -1,10 +1,11 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNotificationCenter from '@/layouts/components/AppNotificationCenter.vue'
 import { useAuth } from '@/composables/useAuth'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredEmployer } from '@/utils/authStorage'
+import { buildStorageAssetCandidates } from '@/utils/media'
 
 const props = defineProps({
   sidebarCollapsed: {
@@ -19,13 +20,32 @@ const router = useRouter()
 const searchKeyword = ref('')
 const profileMenuOpen = ref(false)
 const profileMenuRef = ref(null)
+const currentEmployer = ref(getStoredEmployer())
+const avatarCandidateIndex = ref(0)
+const avatarLoadFailed = ref(false)
 const { logout, isLoading } = useAuth()
 const notify = useNotify()
 
-const employer = computed(() => getStoredEmployer())
-const displayName = computed(() => employer.value?.ho_ten || employer.value?.email || 'Nhà tuyển dụng')
-const displayRole = computed(() => employer.value?.ten_vai_tro || 'Employer')
+const syncCurrentEmployer = () => {
+  currentEmployer.value = getStoredEmployer()
+  avatarCandidateIndex.value = 0
+  avatarLoadFailed.value = false
+}
+
+const displayName = computed(() => currentEmployer.value?.ho_ten || currentEmployer.value?.email || 'Nhà tuyển dụng')
+const displayRole = computed(() => currentEmployer.value?.ten_vai_tro || 'Employer')
 const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'N')
+const avatarCandidates = computed(() =>
+  buildStorageAssetCandidates(
+    currentEmployer.value?.anh_dai_dien_url ||
+    currentEmployer.value?.anh_dai_dien ||
+    currentEmployer.value?.avatar_url ||
+    currentEmployer.value?.avatar ||
+    currentEmployer.value?.hinh_anh ||
+    ''
+  )
+)
+const displayAvatar = computed(() => avatarCandidates.value[avatarCandidateIndex.value] || '')
 
 const submitSearch = () => {
   const keyword = searchKeyword.value.trim()
@@ -45,6 +65,12 @@ const goToCompany = () => {
   router.push('/employer/company')
 }
 
+const goToProfile = () => {
+  closeProfileMenu()
+  syncCurrentEmployer()
+  router.push('/employer/profile')
+}
+
 const handleLogout = async () => {
   closeProfileMenu()
   try {
@@ -61,13 +87,35 @@ const handleClickOutside = (event) => {
   }
 }
 
+const handleAvatarError = () => {
+  if (avatarCandidateIndex.value < avatarCandidates.value.length - 1) {
+    avatarCandidateIndex.value += 1
+    return
+  }
+
+  avatarLoadFailed.value = true
+}
+
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  window.addEventListener('auth-changed', syncCurrentEmployer)
+  window.addEventListener('employer-profile-updated', syncCurrentEmployer)
+  syncCurrentEmployer()
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  window.removeEventListener('auth-changed', syncCurrentEmployer)
+  window.removeEventListener('employer-profile-updated', syncCurrentEmployer)
 })
+
+watch(
+  () => currentEmployer.value,
+  () => {
+    avatarCandidateIndex.value = 0
+    avatarLoadFailed.value = false
+  }
+)
 </script>
 
 <template>
@@ -112,8 +160,15 @@ onBeforeUnmount(() => {
           type="button"
           @click.stop="toggleProfileMenu"
         >
-          <div class="flex h-10 w-10 items-center justify-center rounded-2xl bg-[#2463eb]/10 text-sm font-black text-[#2463eb]">
-            {{ avatarLetter }}
+          <div class="flex h-10 w-10 items-center justify-center overflow-hidden rounded-2xl bg-[#2463eb]/10 text-sm font-black text-[#2463eb]">
+            <img
+              v-if="displayAvatar && !avatarLoadFailed"
+              :src="displayAvatar"
+              :alt="displayName"
+              class="h-full w-full object-cover"
+              @error="handleAvatarError"
+            />
+            <span v-else>{{ avatarLetter }}</span>
           </div>
           <div class="hidden min-w-0 sm:block">
             <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">{{ displayName }}</p>
@@ -126,6 +181,14 @@ onBeforeUnmount(() => {
           v-if="profileMenuOpen"
           class="absolute right-0 mt-3 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-xl dark:border-slate-700 dark:bg-slate-900"
         >
+          <button
+            class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
+            type="button"
+            @click="goToProfile"
+          >
+            <span class="material-symbols-outlined text-[18px]">person</span>
+            Profile
+          </button>
           <button
             class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium text-slate-700 transition hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800"
             type="button"

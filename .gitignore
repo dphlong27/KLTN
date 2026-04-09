@@ -2,13 +2,3 @@
 .env
 **/.env
 .env.*
-
-# Python
-__pycache__/
-*.pyc
-
-# MacOS
-.DS_Store
-
-# Node
-node_modules/

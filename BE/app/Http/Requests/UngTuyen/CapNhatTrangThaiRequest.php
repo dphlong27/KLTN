@@ -40,11 +40,6 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'string',
                 Rule::in(['online', 'offline', 'phone']),
             ],
-            'vong_phong_van_hien_tai' => [
-                'nullable',
-                'string',
-                Rule::in(UngTuyen::VONG_PHONG_VAN_LIST),
-            ],
             'nguoi_phong_van' => [
                 'nullable',
                 'string',
@@ -59,11 +54,6 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'nullable',
                 'string',
                 'max:255'
-            ],
-            'rubric_danh_gia_phong_van' => [
-                'nullable',
-                'string',
-                'max:5000',
             ],
             'ghi_chu' => [
                 'nullable',
@@ -95,8 +85,6 @@ class CapNhatTrangThaiRequest extends FormRequest
         return [
             'trang_thai.required' => 'Vui lòng cung cấp trạng thái mới.',
             'trang_thai.in' => 'Trạng thái không hợp lệ.',
-            'vong_phong_van_hien_tai.in' => 'Vòng phỏng vấn không hợp lệ.',
-            'hinh_thuc_phong_van.in' => 'Hình thức phỏng vấn không hợp lệ.',
         ];
     }
 }

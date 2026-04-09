@@ -53,14 +53,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $exceptions->render(function (\Illuminate\Validation\ValidationException $e, Request $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
-                $firstError = collect($e->errors())
-                    ->flatten()
-                    ->filter()
-                    ->first();
-
                 return response()->json([
                     'success' => false,
-                    'message' => $firstError ?: 'Dữ liệu không hợp lệ.',
+                    'message' => 'Dữ liệu không hợp lệ.',
                     'errors' => $e->errors(),
                 ], 422);
             }

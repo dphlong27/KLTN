@@ -3,19 +3,12 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { employerCandidateService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
-import ProfileCvPreview from '@/components/Dashboard/ProfileCvPreview.vue'
-import {
-  cvTemplateLabel,
-  hasBuilderCv as hasBuilderCvUtil,
-} from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
 
 const loading = ref(false)
 const candidates = ref([])
 const pagination = ref(null)
-const previewModalOpen = ref(false)
-const selectedCandidate = ref(null)
 
 const filters = reactive({
   search: '',
@@ -163,12 +156,6 @@ const fetchProtectedFile = async (url) => {
 const openCv = async (candidate) => {
   const cvUrl = candidate.file_cv_url
 
-  if (!cvUrl && hasBuilderCvUtil(candidate)) {
-    selectedCandidate.value = candidate
-    previewModalOpen.value = true
-    return
-  }
-
   if (!cvUrl) {
     notify.info('Ứng viên này chưa có file CV đính kèm.')
     return
@@ -184,11 +171,6 @@ const openCv = async (candidate) => {
   } catch (error) {
     notify.error('Không mở được file CV. Vui lòng thử lại.')
   }
-}
-
-const closePreviewModal = () => {
-  previewModalOpen.value = false
-  selectedCandidate.value = null
 }
 
 onMounted(fetchCandidates)
@@ -380,7 +362,7 @@ onMounted(fetchCandidates)
             @click="openCv(candidate)"
           >
             <span class="material-symbols-outlined text-[18px]">description</span>
-            {{ candidate.file_cv_url ? 'Xem file CV' : hasBuilderCvUtil(candidate) ? 'Xem CV hệ thống' : 'Xem CV' }}
+            Xem CV
           </button>
         </div>
       </div>
@@ -408,39 +390,6 @@ onMounted(fetchCandidates)
         >
           <span class="material-symbols-outlined text-[20px]">chevron_right</span>
         </button>
-      </div>
-    </div>
-
-    <div
-      v-if="previewModalOpen && selectedCandidate"
-      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
-      @click.self="closePreviewModal"
-    >
-      <div class="mx-auto w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
-        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
-          <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">CV hệ thống</p>
-            <h3 class="mt-2 text-2xl font-bold text-slate-900">{{ selectedCandidate.nguoi_dung?.ho_ten || 'Ứng viên' }}</h3>
-            <p class="mt-1 text-sm text-slate-500">{{ selectedCandidate.tieu_de_ho_so }} • {{ cvTemplateLabel(selectedCandidate.mau_cv) }}</p>
-          </div>
-          <button
-            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            type="button"
-            @click="closePreviewModal"
-          >
-            <span class="material-symbols-outlined">close</span>
-          </button>
-        </div>
-
-        <div class="max-h-[calc(100vh-8rem)] overflow-y-auto px-6 py-6">
-          <ProfileCvPreview :profile="selectedCandidate" :owner="selectedCandidate.nguoi_dung || {}" :compact="true" />
-        </div>
-
-        <div class="flex justify-end border-t border-slate-100 px-6 py-5">
-          <button class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-700" type="button" @click="closePreviewModal">
-            Đóng
-          </button>
-        </div>
       </div>
     </div>
   </div>

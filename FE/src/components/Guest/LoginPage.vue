@@ -3,7 +3,6 @@ import { onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
 import { persistAuthSession } from '@/utils/authStorage'
-import { extractApiErrorMessage } from '@/utils/apiErrors'
 
 const router = useRouter()
 const route = useRoute()
@@ -107,7 +106,7 @@ const handleLogin = async () => {
       router.push(typeof route.query.redirect === 'string' ? route.query.redirect : fallback)
     }, 500)
   } catch (error) {
-    errorMessage.value = extractApiErrorMessage(error, 'Đăng nhập thất bại')
+    errorMessage.value = error.message || 'Đăng nhập thất bại'
     verificationPendingEmail.value = error?.data?.email || loginForm.email.trim()
   } finally {
     isLoading.value = false
@@ -124,7 +123,7 @@ const handleResendVerification = async () => {
     const response = await authService.resendVerificationEmail(verificationPendingEmail.value)
     successMessage.value = response?.message || 'Đã gửi lại email xác thực.'
   } catch (error) {
-    errorMessage.value = extractApiErrorMessage(error, 'Không thể gửi lại email xác thực.')
+    errorMessage.value = error.message || 'Không thể gửi lại email xác thực.'
   } finally {
     resendLoading.value = false
   }

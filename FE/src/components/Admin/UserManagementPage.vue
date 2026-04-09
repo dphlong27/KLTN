@@ -181,7 +181,6 @@ const loadUsers = async () => {
     totalUsers.value = searchQuery.value.trim() ? filteredUsers.length : total
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách người dùng'
-    notify.apiError(err, 'Không thể tải danh sách người dùng.')
   } finally {
     loading.value = false
   }
@@ -235,7 +234,6 @@ const submitForm = async () => {
     await loadStats()
   } catch (err) {
     error.value = err.message || 'Lỗi lưu người dùng'
-    notify.apiError(err, 'Không thể lưu người dùng.')
   } finally {
     saving.value = false
   }
@@ -257,7 +255,6 @@ const deleteUser = async () => {
     notify.success('Đã xóa người dùng')
   } catch (err) {
     error.value = err.message || 'Lỗi xóa người dùng'
-    notify.apiError(err, 'Không thể xóa người dùng.')
   }
 }
 
@@ -270,7 +267,6 @@ const toggleLock = async (userId) => {
     notify.success('Đã cập nhật trạng thái tài khoản')
   } catch (err) {
     error.value = err.message || 'Lỗi khoá/mở khoá tài khoản'
-    notify.apiError(err, 'Không thể cập nhật trạng thái tài khoản.')
   }
 }
 

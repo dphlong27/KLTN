@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { applicationService, matchingService, profileService, savedJobService } from '@/services/api'
+import { applicationService, followCompanyService, matchingService, profileService, savedJobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate } from '@/utils/authStorage'
 import { getApplicationStatusLabel } from '@/utils/applicationStatus'
@@ -11,6 +11,7 @@ const notify = useNotify()
 const loading = ref(false)
 const profileCount = ref(0)
 const savedCount = ref(0)
+const followedCompanyCount = ref(0)
 const applicationCount = ref(0)
 const matchingAverage = ref(0)
 const topMatches = ref([])
@@ -40,6 +41,13 @@ const stats = computed(() => [
     icon: 'bookmark',
     tone: 'bg-amber-100 text-amber-600',
     helper: savedCount.value > 0 ? 'Để dành cho các vị trí tiềm năng' : 'Chưa có tin nào được lưu',
+  },
+  {
+    label: 'Cong ty da follow',
+    value: followedCompanyCount.value,
+    icon: 'apartment',
+    tone: 'bg-sky-100 text-sky-600',
+    helper: followedCompanyCount.value > 0 ? 'Theo doi job moi tu doanh nghiep quan tam' : 'Chua follow cong ty nao',
   },
   {
     label: 'Số lần ứng tuyển',
@@ -88,20 +96,23 @@ const applicationStatusLabel = getApplicationStatusLabel
 const fetchDashboardData = async () => {
   loading.value = true
   try {
-    const [profilesRes, savedRes, applicationsRes, matchesRes] = await Promise.all([
+    const [profilesRes, savedRes, followedCompaniesRes, applicationsRes, matchesRes] = await Promise.all([
       profileService.getProfiles({ per_page: 100, sort_by: 'updated_at', sort_dir: 'desc' }),
       savedJobService.getSavedJobs({ per_page: 100 }),
+      followCompanyService.getFollowedCompanies({ per_page: 100 }),
       applicationService.getApplications({ per_page: 20, page: 1 }),
       matchingService.getMatchingResults({ per_page: 20, page: 1 }),
     ])
 
     const profilesPayload = profilesRes?.data || {}
     const savedPayload = savedRes?.data || {}
+    const followedCompaniesPayload = followedCompaniesRes?.data || {}
     const applicationsPayload = applicationsRes?.data || {}
     const matchesPayload = matchesRes?.data || {}
 
     profileCount.value = profilesPayload.total || (profilesPayload.data || []).length || 0
     savedCount.value = savedPayload.total || (savedPayload.data || []).length || 0
+    followedCompanyCount.value = followedCompaniesPayload.total || (followedCompaniesPayload.data || []).length || 0
     applicationCount.value = applicationsPayload.total || (applicationsPayload.data || []).length || 0
 
     topMatches.value = matchesPayload.data || []
@@ -136,7 +147,7 @@ onMounted(fetchDashboardData)
       </RouterLink>
     </div>
 
-    <div class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+    <div class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-5">
       <div
         v-for="stat in stats"
         :key="stat.label"

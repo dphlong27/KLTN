@@ -25,16 +25,13 @@ class InterviewScheduledNotification extends Notification
             UngTuyen::TRANG_THAI_QUA_PHONG_VAN => 'Hồ sơ của bạn đã được cập nhật sang trạng thái qua phỏng vấn nên không cần phản hồi lịch phỏng vấn nữa.',
             UngTuyen::TRANG_THAI_TRUNG_TUYEN => 'Hồ sơ của bạn đã chuyển sang trạng thái trúng tuyển nên không thể phản hồi lịch phỏng vấn nữa.',
             UngTuyen::TRANG_THAI_TU_CHOI => 'Hồ sơ của bạn đã có kết quả từ chối nên không thể phản hồi lịch phỏng vấn nữa.',
-            UngTuyen::TRANG_THAI_DA_GUI_OFFER => 'Nhà tuyển dụng đã gửi đề nghị nhận việc nên bạn không thể phản hồi lịch phỏng vấn nữa.',
-            UngTuyen::TRANG_THAI_DA_NHAN_VIEC => 'Bạn đã xác nhận nhận việc nên không thể phản hồi lịch phỏng vấn nữa.',
-            UngTuyen::TRANG_THAI_TU_CHOI_OFFER => 'Bạn đã từ chối đề nghị nhận việc nên không thể phản hồi lịch phỏng vấn nữa.',
             default => null,
         };
     }
 
     public function __construct(
         private readonly UngTuyen $ungTuyen,
-        private readonly string $mode = 'scheduled',
+        private readonly bool $isRescheduled = false,
     ) {
     }
 
@@ -59,24 +56,15 @@ class InterviewScheduledNotification extends Notification
         };
         $nguoiPhongVan = trim((string) ($ungTuyen->nguoi_phong_van ?? ''));
         $linkPhongVan = trim((string) ($ungTuyen->link_phong_van ?? ''));
-        $roundLabel = $ungTuyen->vong_phong_van_hien_tai
-            ? UngTuyen::getVongPhongVanLabel($ungTuyen->vong_phong_van_hien_tai)
-            : null;
         $thoiGian = $ngayHen
             ? $ngayHen->timezone(self::DISPLAY_TIMEZONE)->format('H:i d/m/Y')
             : 'Chưa xác định';
-        $isRescheduled = $this->mode === 'rescheduled';
-        $isReminder = $this->mode === 'reminder';
-        $subject = match ($this->mode) {
-            'reminder' => "Nhac lich phong van - {$tenViTri} tai {$tenCongTy}",
-            'rescheduled' => "Cap nhat lich phong van - {$tenViTri} tai {$tenCongTy}",
-            default => "Thu moi phong van - {$tenViTri} tai {$tenCongTy}",
-        };
-        $previewText = match ($this->mode) {
-            'reminder' => 'Buoi phong van cua ban sap dien ra. Vui long kiem tra lai thong tin va chuan bi.',
-            'rescheduled' => 'Nha tuyen dung vua cap nhat lich phong van cua ban.',
-            default => 'Nha tuyen dung vua dat lich phong van cho ho so ung tuyen cua ban.',
-        };
+        $subject = $this->isRescheduled
+            ? "Cap nhat lich phong van - {$tenViTri} tai {$tenCongTy}"
+            : "Thu moi phong van - {$tenViTri} tai {$tenCongTy}";
+        $previewText = $this->isRescheduled
+            ? 'Nha tuyen dung vua cap nhat lich phong van cua ban.'
+            : 'Nha tuyen dung vua dat lich phong van cho ho so ung tuyen cua ban.';
         $candidateId = (int) ($ungTuyen->hoSo?->nguoiDung?->id ?? $notifiable->id ?? 0);
         $acceptUrl = null;
         $declineUrl = null;
@@ -120,14 +108,11 @@ class InterviewScheduledNotification extends Notification
             ->view('emails.interview-scheduled', [
                 'subjectText' => $subject,
                 'previewText' => $previewText,
-                'mailMode' => $this->mode,
-                'isRescheduled' => $isRescheduled,
-                'isReminder' => $isReminder,
+                'isRescheduled' => $this->isRescheduled,
                 'candidateName' => $notifiable->ho_ten ?: 'bạn',
                 'jobTitle' => $tenViTri,
                 'companyName' => $tenCongTy,
                 'interviewTime' => $thoiGian,
-                'interviewRound' => $roundLabel,
                 'interviewMode' => $hinhThuc,
                 'interviewerName' => $nguoiPhongVan,
                 'locationOrLink' => $linkPhongVan,
@@ -139,5 +124,4 @@ class InterviewScheduledNotification extends Notification
                 'actionUrl' => rtrim((string) env('FRONTEND_URL', self::FRONTEND_FALLBACK), '/') . '/applications',
             ]);
     }
-
 }
