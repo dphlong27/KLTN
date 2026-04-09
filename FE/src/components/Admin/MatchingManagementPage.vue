@@ -106,6 +106,7 @@ const loadMatchings = async () => {
     error.value = err.message || 'Không thể tải lịch sử AI matching.'
     records.value = []
     totalRecords.value = 0
+    notify.apiError(err, 'Không thể tải lịch sử AI matching.')
   } finally {
     loading.value = false
   }

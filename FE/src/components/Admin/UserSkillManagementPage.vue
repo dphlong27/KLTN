@@ -159,6 +159,7 @@ const loadUserSkills = async () => {
   } catch (err) {
     rawRecords.value = []
     error.value = err.message || 'Không thể tải kỹ năng người dùng.'
+    notify.apiError(err, 'Không thể tải kỹ năng người dùng.')
   } finally {
     loading.value = false
   }

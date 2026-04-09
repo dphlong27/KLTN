@@ -26,6 +26,13 @@ class HoSo extends Model
         'kinh_nghiem_nam',
         'mo_ta_ban_than',
         'file_cv',
+        'nguon_ho_so',
+        'mau_cv',
+        'ky_nang_json',
+        'kinh_nghiem_json',
+        'hoc_van_json',
+        'du_an_json',
+        'chung_chi_json',
         'trang_thai',
     ];
 
@@ -36,6 +43,11 @@ class HoSo extends Model
         'nguoi_dung_id' => 'integer',
         'kinh_nghiem_nam' => 'integer',
         'trang_thai' => 'integer',
+        'ky_nang_json' => 'array',
+        'kinh_nghiem_json' => 'array',
+        'hoc_van_json' => 'array',
+        'du_an_json' => 'array',
+        'chung_chi_json' => 'array',
     ];
 
     // ==========================================
@@ -43,6 +55,10 @@ class HoSo extends Model
     // ==========================================
     const TRANG_THAI_AN = 0;
     const TRANG_THAI_CONG_KHAI = 1;
+
+    const NGUON_HO_SO_UPLOAD = 'upload';
+    const NGUON_HO_SO_BUILDER = 'builder';
+    const NGUON_HO_SO_HYBRID = 'hybrid';
 
     // ==========================================
     // CONSTANTS - Trình độ
@@ -113,6 +129,16 @@ class HoSo extends Model
     public function isAn(): bool
     {
         return $this->trang_thai === self::TRANG_THAI_AN;
+    }
+
+    public function hasBuilderCv(): bool
+    {
+        return $this->nguon_ho_so !== self::NGUON_HO_SO_UPLOAD
+            || !empty($this->ky_nang_json)
+            || !empty($this->kinh_nghiem_json)
+            || !empty($this->hoc_van_json)
+            || !empty($this->du_an_json)
+            || !empty($this->chung_chi_json);
     }
 
     /**

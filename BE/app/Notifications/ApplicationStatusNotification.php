@@ -34,10 +34,10 @@ class ApplicationStatusNotification extends Notification
         $tenViTri = $tin?->tieu_de ?: 'Chưa xác định';
         $tenCongTy = $congTy?->ten_cong_ty ?: 'Chưa xác định';
         $subject = $isAccepted
-            ? "Chuc mung! Ban da trung tuyen vi tri {$tenViTri} tai {$tenCongTy}"
+            ? "Chuc mung! Ban da vuot qua quy trinh tuyen chon cho vi tri {$tenViTri} tai {$tenCongTy}"
             : "Thong bao ket qua ung tuyen vi tri {$tenViTri} tai {$tenCongTy}";
         $previewText = $isAccepted
-            ? 'Nha tuyen dung da xac nhan ban trung tuyen va se lien he voi ban cho cac buoc tiep theo.'
+            ? 'Nha tuyen dung da xac nhan ban phu hop va se gui de nghi nhan viec o buoc tiep theo neu co.'
             : 'Nha tuyen dung da hoan tat danh gia va gui ket qua ung tuyen den ban.';
 
         return (new MailMessage)
@@ -49,8 +49,9 @@ class ApplicationStatusNotification extends Notification
                 'candidateName' => $tenNguoiNhan,
                 'jobTitle' => $tenViTri,
                 'companyName' => $tenCongTy,
-                'ctaLabel' => $isAccepted ? 'Xem kết quả ứng tuyển' : 'Xem lịch sử ứng tuyển',
+                'ctaLabel' => $isAccepted ? 'Theo dõi bước tiếp theo' : 'Xem lịch sử ứng tuyển',
                 'actionUrl' => $frontEndUrl . '/applications',
             ]);
     }
+
 }

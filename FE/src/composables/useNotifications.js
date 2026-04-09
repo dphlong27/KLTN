@@ -170,11 +170,41 @@ const buildCandidateNotifications = async () => {
           return createNotification({
             id: `candidate-accepted-${application.id}-${application.updated_at || application.thoi_gian_ung_tuyen}`,
             title: 'Chúc mừng, bạn đã trúng tuyển',
-            message: `${companyName} đã chốt kết quả trúng tuyển cho vị trí ${baseTitle}.`,
+            message: `${companyName} đã xác nhận bạn phù hợp cho vị trí ${baseTitle} và có thể gửi offer ở bước tiếp theo.`,
             time: appliedTime,
             to: '/applications',
             icon: 'task_alt',
             tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+          })
+        case APPLICATION_STATUS.OFFER_SENT:
+          return createNotification({
+            id: `candidate-offer-sent-${application.id}-${application.thoi_gian_gui_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
+            title: 'Bạn đã nhận được offer',
+            message: `${companyName} đã gửi đề nghị nhận việc cho vị trí ${baseTitle}.`,
+            time: application.thoi_gian_gui_offer || appliedTime,
+            to: '/applications',
+            icon: 'mail',
+            tone: 'bg-teal-500/10 text-teal-600 dark:text-teal-300',
+          })
+        case APPLICATION_STATUS.ONBOARDED:
+          return createNotification({
+            id: `candidate-onboarded-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
+            title: 'Bạn đã xác nhận nhận việc',
+            message: `Bạn đã chấp nhận offer cho vị trí ${baseTitle} tại ${companyName}.`,
+            time: application.thoi_gian_phan_hoi_offer || appliedTime,
+            to: '/applications',
+            icon: 'handshake',
+            tone: 'bg-green-600/10 text-green-600 dark:text-green-300',
+          })
+        case APPLICATION_STATUS.OFFER_DECLINED:
+          return createNotification({
+            id: `candidate-offer-declined-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
+            title: 'Bạn đã từ chối offer',
+            message: `Bạn đã phản hồi từ chối đề nghị nhận việc cho vị trí ${baseTitle} tại ${companyName}.`,
+            time: application.thoi_gian_phan_hoi_offer || appliedTime,
+            to: '/applications',
+            icon: 'cancel',
+            tone: 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
           })
         case APPLICATION_STATUS.REJECTED:
           return createNotification({
@@ -262,6 +292,48 @@ const buildEmployerNotifications = async () => {
           to: '/employer/interviews',
           icon: 'task_alt',
           tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
+        }),
+      )
+    }
+
+    if (Number(application?.trang_thai) === APPLICATION_STATUS.OFFER_SENT) {
+      items.push(
+        createNotification({
+          id: `employer-offer-sent-${application.id}-${application.thoi_gian_gui_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
+          title: 'Offer đã được gửi',
+          message: `${candidateName} đang chờ phản hồi đề nghị nhận việc cho vị trí ${jobTitle}.`,
+          time: application.thoi_gian_gui_offer || application.updated_at || application.thoi_gian_ung_tuyen,
+          to: '/employer/interviews',
+          icon: 'mail',
+          tone: 'bg-teal-500/10 text-teal-600 dark:text-teal-300',
+        }),
+      )
+    }
+
+    if (Number(application?.trang_thai) === APPLICATION_STATUS.ONBOARDED) {
+      items.push(
+        createNotification({
+          id: `employer-onboarded-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
+          title: 'Ứng viên đã nhận việc',
+          message: `${candidateName} đã chấp nhận offer cho vị trí ${jobTitle}.`,
+          time: application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen,
+          to: '/employer/interviews',
+          icon: 'handshake',
+          tone: 'bg-green-600/10 text-green-600 dark:text-green-300',
+        }),
+      )
+    }
+
+    if (Number(application?.trang_thai) === APPLICATION_STATUS.OFFER_DECLINED) {
+      items.push(
+        createNotification({
+          id: `employer-offer-declined-${application.id}-${application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen}`,
+          title: 'Offer đã bị từ chối',
+          message: `${candidateName} đã từ chối đề nghị nhận việc cho vị trí ${jobTitle}.`,
+          time: application.thoi_gian_phan_hoi_offer || application.updated_at || application.thoi_gian_ung_tuyen,
+          to: '/employer/interviews',
+          icon: 'warning',
+          tone: 'bg-orange-500/10 text-orange-600 dark:text-orange-300',
         }),
       )
     }

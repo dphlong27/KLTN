@@ -211,6 +211,7 @@ const loadReports = async () => {
     error.value = err.message || 'Không thể tải lịch sử tư vấn nghề nghiệp.'
     reports.value = []
     totalReports.value = 0
+    notify.apiError(err, 'Không thể tải lịch sử tư vấn nghề nghiệp.')
   } finally {
     loading.value = false
   }

@@ -3,12 +3,20 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { employerCandidateService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
+import {
+  cvSkillLevelLabel,
+  cvTemplateLabel,
+  formatCvPeriod,
+  hasBuilderCv as hasBuilderCvUtil,
+} from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
 
 const loading = ref(false)
 const candidates = ref([])
 const pagination = ref(null)
+const previewModalOpen = ref(false)
+const selectedCandidate = ref(null)
 
 const filters = reactive({
   search: '',
@@ -156,6 +164,12 @@ const fetchProtectedFile = async (url) => {
 const openCv = async (candidate) => {
   const cvUrl = candidate.file_cv_url
 
+  if (!cvUrl && hasBuilderCvUtil(candidate)) {
+    selectedCandidate.value = candidate
+    previewModalOpen.value = true
+    return
+  }
+
   if (!cvUrl) {
     notify.info('Ứng viên này chưa có file CV đính kèm.')
     return
@@ -171,6 +185,11 @@ const openCv = async (candidate) => {
   } catch (error) {
     notify.error('Không mở được file CV. Vui lòng thử lại.')
   }
+}
+
+const closePreviewModal = () => {
+  previewModalOpen.value = false
+  selectedCandidate.value = null
 }
 
 onMounted(fetchCandidates)
@@ -362,7 +381,7 @@ onMounted(fetchCandidates)
             @click="openCv(candidate)"
           >
             <span class="material-symbols-outlined text-[18px]">description</span>
-            Xem CV
+            {{ candidate.file_cv_url ? 'Xem file CV' : hasBuilderCvUtil(candidate) ? 'Xem CV hệ thống' : 'Xem CV' }}
           </button>
         </div>
       </div>
@@ -390,6 +409,113 @@ onMounted(fetchCandidates)
         >
           <span class="material-symbols-outlined text-[20px]">chevron_right</span>
         </button>
+      </div>
+    </div>
+
+    <div
+      v-if="previewModalOpen && selectedCandidate"
+      class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      @click.self="closePreviewModal"
+    >
+      <div class="mx-auto w-full max-w-4xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">CV hệ thống</p>
+            <h3 class="mt-2 text-2xl font-bold text-slate-900">{{ selectedCandidate.nguoi_dung?.ho_ten || 'Ứng viên' }}</h3>
+            <p class="mt-1 text-sm text-slate-500">{{ selectedCandidate.tieu_de_ho_so }} • {{ cvTemplateLabel(selectedCandidate.mau_cv) }}</p>
+          </div>
+          <button
+            class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            type="button"
+            @click="closePreviewModal"
+          >
+            <span class="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div class="max-h-[calc(100vh-8rem)] overflow-y-auto px-6 py-6">
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div class="rounded-2xl border border-slate-200 px-4 py-4 lg:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Thông tin liên hệ</p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <span class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">{{ selectedCandidate.nguoi_dung?.email || 'Chưa cập nhật email' }}</span>
+                <span class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">{{ selectedCandidate.nguoi_dung?.so_dien_thoai || 'Chưa cập nhật số điện thoại' }}</span>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4 lg:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Mục tiêu nghề nghiệp</p>
+              <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ selectedCandidate.muc_tieu_nghe_nghiep || 'Chưa cập nhật mục tiêu nghề nghiệp.' }}</p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4 lg:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Giới thiệu</p>
+              <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ selectedCandidate.mo_ta_ban_than || 'Chưa cập nhật mô tả bản thân.' }}</p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4 lg:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Kỹ năng</p>
+              <div v-if="selectedCandidate.ky_nang_json?.length" class="mt-3 flex flex-wrap gap-2">
+                <span
+                  v-for="(item, index) in selectedCandidate.ky_nang_json"
+                  :key="`candidate-skill-${index}`"
+                  class="rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                >
+                  {{ item.ten }}<span v-if="item.muc_do"> • {{ cvSkillLevelLabel(item.muc_do) }}</span>
+                </span>
+              </div>
+              <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật kỹ năng.</p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4 lg:col-span-2">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Kinh nghiệm làm việc</p>
+              <div v-if="selectedCandidate.kinh_nghiem_json?.length" class="mt-3 space-y-3">
+                <div v-for="(item, index) in selectedCandidate.kinh_nghiem_json" :key="`candidate-exp-${index}`" class="rounded-2xl bg-slate-50 px-4 py-4">
+                  <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p class="text-sm font-bold text-slate-900">{{ item.vi_tri || 'Chưa cập nhật vị trí' }}</p>
+                      <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
+                    </div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+                  </div>
+                  <p v-if="item.mo_ta" class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ item.mo_ta }}</p>
+                </div>
+              </div>
+              <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật kinh nghiệm.</p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Học vấn</p>
+              <div v-if="selectedCandidate.hoc_van_json?.length" class="mt-3 space-y-3">
+                <div v-for="(item, index) in selectedCandidate.hoc_van_json" :key="`candidate-edu-${index}`" class="rounded-2xl bg-slate-50 px-4 py-4">
+                  <p class="text-sm font-bold text-slate-900">{{ item.truong || 'Chưa cập nhật trường học' }}</p>
+                  <p class="mt-1 text-sm text-slate-500">{{ item.chuyen_nganh || 'Chưa cập nhật chuyên ngành' }}</p>
+                  <p class="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+                </div>
+              </div>
+              <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật học vấn.</p>
+            </div>
+
+            <div class="rounded-2xl border border-slate-200 px-4 py-4">
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Dự án</p>
+              <div v-if="selectedCandidate.du_an_json?.length" class="mt-3 space-y-3">
+                <div v-for="(item, index) in selectedCandidate.du_an_json" :key="`candidate-project-${index}`" class="rounded-2xl bg-slate-50 px-4 py-4">
+                  <p class="text-sm font-bold text-slate-900">{{ item.ten || 'Chưa cập nhật dự án' }}</p>
+                  <p class="mt-1 text-sm text-slate-500">{{ item.vai_tro || 'Chưa cập nhật vai trò' }}</p>
+                  <p v-if="item.cong_nghe" class="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ item.cong_nghe }}</p>
+                  <p v-if="item.mo_ta" class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ item.mo_ta }}</p>
+                </div>
+              </div>
+              <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật dự án.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end border-t border-slate-100 px-6 py-5">
+          <button class="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-700" type="button" @click="closePreviewModal">
+            Đóng
+          </button>
+        </div>
       </div>
     </div>
   </div>

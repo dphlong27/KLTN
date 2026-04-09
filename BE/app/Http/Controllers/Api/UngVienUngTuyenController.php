@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UngTuyen\NopHoSoRequest;
+use App\Http\Requests\UngTuyen\PhanHoiOfferRequest;
 use App\Http\Requests\UngTuyen\XacNhanPhongVanRequest;
 use App\Models\TinTuyenDung;
 use App\Models\UngTuyen;
@@ -27,13 +28,43 @@ class UngVienUngTuyenController extends Controller
         ], 401);
     }
 
+    private function appendHistory(UngTuyen $ungTuyen, string $event, string $message, array $meta = []): void
+    {
+        $actor = auth()->user() ?: $ungTuyen->hoSo?->nguoiDung;
+
+        $ungTuyen->appendHistory([
+            'event' => $event,
+            'message' => $message,
+            'actor' => [
+                'type' => 'candidate',
+                'id' => $actor?->id,
+                'name' => $actor?->ho_ten ?: $actor?->email ?: 'Ứng viên',
+            ],
+            'meta' => $meta,
+        ]);
+    }
+
     private function isInterviewResponseLocked(UngTuyen $ungTuyen): bool
     {
         return (bool) $ungTuyen->da_rut_don || in_array((int) $ungTuyen->trang_thai, [
             UngTuyen::TRANG_THAI_QUA_PHONG_VAN,
             UngTuyen::TRANG_THAI_TRUNG_TUYEN,
             UngTuyen::TRANG_THAI_TU_CHOI,
+            UngTuyen::TRANG_THAI_DA_GUI_OFFER,
+            UngTuyen::TRANG_THAI_DA_NHAN_VIEC,
+            UngTuyen::TRANG_THAI_TU_CHOI_OFFER,
         ], true);
+    }
+
+    private function loadApplicationRelations(): array
+    {
+        return [
+            'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
+            'tinTuyenDung.congTy:id,ten_cong_ty,logo',
+            'hoSo' => function ($q) {
+                $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
+            }
+        ];
     }
 
     /**
@@ -49,23 +80,13 @@ class UngVienUngTuyenController extends Controller
 
         $withdrawn = $request->boolean('da_rut_don', false);
 
-        // Query các ứng tuyển thông qua hồ sơ của user hiện tại
         $query = UngTuyen::whereHas('hoSo', function ($q) use ($userId) {
-            // Bao gồm cả hoSo đã soft delete
             $q->withTrashed()->where('nguoi_dung_id', $userId);
         })
         ->whereNotNull('thoi_gian_ung_tuyen')
         ->where('da_rut_don', $withdrawn)
-        ->with([
-            'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
-            'tinTuyenDung.congTy:id,ten_cong_ty,logo',
-            'hoSo' => function ($q) {
-                // Bao gồm cả hồ sơ bị xóa
-                $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
-            }
-        ]);
+        ->with($this->loadApplicationRelations());
 
-        // Lọc theo trạng thái ứng tuyển (nếu có)
         if ($request->has('trang_thai') && $request->trang_thai !== '') {
             $query->where('trang_thai', $request->trang_thai);
         }
@@ -94,7 +115,6 @@ class UngVienUngTuyenController extends Controller
         $tinId = $request->tin_tuyen_dung_id;
         $hoSoId = (int) $request->ho_so_id;
 
-        // 1. Kiểm tra tin tuyển dụng có còn hoạt động không
         $tin = TinTuyenDung::find($tinId);
         if ($tin->trang_thai != 1 || ($tin->ngay_het_han && \Carbon\Carbon::parse($tin->ngay_het_han)->isPast())) {
             return response()->json([
@@ -103,7 +123,6 @@ class UngVienUngTuyenController extends Controller
             ], 400);
         }
 
-        // 2. Kiểm tra cty có đang hoạt động không
         if ($tin->congTy && $tin->congTy->trang_thai != 1) {
             return response()->json([
                 'success' => false,
@@ -127,7 +146,6 @@ class UngVienUngTuyenController extends Controller
             ], 422);
         }
 
-        // 3. Nếu đã có nháp cover letter cho tin này thì tái sử dụng nháp đó.
         $ungTuyenNhaps = UngTuyen::where('tin_tuyen_dung_id', $tinId)
             ->whereHas('hoSo', function ($q) use ($userId) {
                 $q->withTrashed()->where('nguoi_dung_id', $userId);
@@ -147,12 +165,12 @@ class UngVienUngTuyenController extends Controller
                 'trang_thai' => UngTuyen::TRANG_THAI_CHO_DUYET,
                 'thoi_gian_ung_tuyen' => $this->nowUtc(),
             ]);
+            $this->appendHistory($ungTuyenNhap, 'application_submitted', 'Ứng viên đã nộp hồ sơ ứng tuyển.');
             $ungTuyenNhap->save();
             $ungTuyenNhap->load([
                 'tinTuyenDung:id,tieu_de',
                 'hoSo:id,tieu_de_ho_so'
             ]);
-
             return response()->json([
                 'success' => true,
                 'message' => 'Nộp hồ sơ thành công!',
@@ -160,8 +178,6 @@ class UngVienUngTuyenController extends Controller
             ], 201);
         }
 
-        // 4. Kiểm tra xem người dùng này ĐÃ nộp hồ sơ hoàn chỉnh vào tin này CHƯA
-        // (Dù nộp bằng hồ sơ khác cũng không cho, 1 tài khoản chỉ nộp 1 lần/tin)
         $daNop = UngTuyen::where('tin_tuyen_dung_id', $tinId)
             ->whereHas('hoSo', function ($q) use ($userId) {
                 $q->withTrashed()->where('nguoi_dung_id', $userId);
@@ -176,21 +192,29 @@ class UngVienUngTuyenController extends Controller
             ], 400);
         }
 
-        // Tạo ứng tuyển
         $ungTuyen = UngTuyen::create([
             'tin_tuyen_dung_id' => $tinId,
             'ho_so_id' => $hoSoId,
             'thu_xin_viec' => $request->thu_xin_viec,
             'trang_thai' => UngTuyen::TRANG_THAI_CHO_DUYET,
             'thoi_gian_ung_tuyen' => $this->nowUtc(),
+            'lich_su_xu_ly' => [[
+                'event' => 'application_submitted',
+                'message' => 'Ứng viên đã nộp hồ sơ ứng tuyển.',
+                'actor' => [
+                    'type' => 'candidate',
+                    'id' => auth()->id(),
+                    'name' => auth()->user()?->ho_ten ?: auth()->user()?->email ?: 'Ứng viên',
+                ],
+                'meta' => [],
+                'at' => now('UTC')->toISOString(),
+            ]],
         ]);
 
-        // Load relationship trả về
         $ungTuyen->load([
             'tinTuyenDung:id,tieu_de',
             'hoSo:id,tieu_de_ho_so'
         ]);
-
         return response()->json([
             'success' => true,
             'message' => 'Nộp hồ sơ thành công!',
@@ -238,15 +262,9 @@ class UngVienUngTuyenController extends Controller
             'ho_so_id' => (int) $validated['ho_so_id'],
             'thu_xin_viec' => $validated['thu_xin_viec'] ?: null,
         ]);
+        $this->appendHistory($ungTuyen, 'application_updated', 'Ứng viên đã cập nhật CV hoặc thư xin việc.');
         $ungTuyen->save();
-
-        $ungTuyen->load([
-            'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
-            'tinTuyenDung.congTy:id,ten_cong_ty,logo',
-            'hoSo' => function ($q) {
-                $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
-            }
-        ]);
+        $ungTuyen->load($this->loadApplicationRelations());
 
         return response()->json([
             'success' => true,
@@ -269,13 +287,7 @@ class UngVienUngTuyenController extends Controller
                 $query->withTrashed()->where('nguoi_dung_id', $userId);
             })
             ->whereNotNull('thoi_gian_ung_tuyen')
-            ->with([
-                'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
-                'tinTuyenDung.congTy:id,ten_cong_ty,logo',
-                'hoSo' => function ($q) {
-                    $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
-                },
-            ])
+            ->with($this->loadApplicationRelations())
             ->firstOrFail();
 
         if (!$ungTuyen->ngay_hen_phong_van) {
@@ -299,26 +311,31 @@ class UngVienUngTuyenController extends Controller
             ], 422);
         }
 
+        $responseStatus = (int) $request->input('trang_thai_tham_gia_phong_van');
+
         $ungTuyen->fill([
-            'trang_thai_tham_gia_phong_van' => (int) $request->input('trang_thai_tham_gia_phong_van'),
+            'trang_thai_tham_gia_phong_van' => $responseStatus,
             'thoi_gian_phan_hoi_phong_van' => $this->nowUtc(),
         ]);
+        $this->appendHistory(
+            $ungTuyen,
+            'interview_attendance_confirmed',
+            $responseStatus === UngTuyen::PHONG_VAN_DA_XAC_NHAN
+                ? 'Ứng viên đã xác nhận tham gia phỏng vấn.'
+                : 'Ứng viên đã phản hồi không thể tham gia phỏng vấn.',
+            [
+                'attendance_status' => $responseStatus,
+            ]
+        );
         $ungTuyen->save();
-
-        $message = (int) $ungTuyen->trang_thai_tham_gia_phong_van === UngTuyen::PHONG_VAN_DA_XAC_NHAN
+        $message = $responseStatus === UngTuyen::PHONG_VAN_DA_XAC_NHAN
             ? 'Bạn đã xác nhận tham gia phỏng vấn.'
             : 'Bạn đã báo không thể tham gia buổi phỏng vấn này.';
 
         return response()->json([
             'success' => true,
             'message' => $message,
-            'data' => $ungTuyen->fresh([
-                'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
-                'tinTuyenDung.congTy:id,ten_cong_ty,logo',
-                'hoSo' => function ($q) {
-                    $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
-                },
-            ]),
+            'data' => $ungTuyen->fresh($this->loadApplicationRelations()),
         ]);
     }
 
@@ -336,13 +353,7 @@ class UngVienUngTuyenController extends Controller
                 $query->withTrashed()->where('nguoi_dung_id', $userId);
             })
             ->whereNotNull('thoi_gian_ung_tuyen')
-            ->with([
-                'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
-                'tinTuyenDung.congTy:id,ten_cong_ty,logo',
-                'hoSo' => function ($q) {
-                    $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
-                },
-            ])
+            ->with($this->loadApplicationRelations())
             ->firstOrFail();
 
         if ($ungTuyen->da_rut_don) {
@@ -370,18 +381,72 @@ class UngVienUngTuyenController extends Controller
             'da_rut_don' => true,
             'thoi_gian_rut_don' => $this->nowUtc(),
         ]);
+        $this->appendHistory($ungTuyen, 'application_withdrawn', 'Ứng viên đã rút đơn ứng tuyển.');
         $ungTuyen->save();
-
         return response()->json([
             'success' => true,
             'message' => 'Đã rút đơn ứng tuyển và chuyển sang mục lưu trữ.',
-            'data' => $ungTuyen->fresh([
-                'tinTuyenDung:id,cong_ty_id,tieu_de,dia_diem_lam_viec,muc_luong,trang_thai',
-                'tinTuyenDung.congTy:id,ten_cong_ty,logo',
-                'hoSo' => function ($q) {
-                    $q->withTrashed()->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'file_cv');
-                },
-            ]),
+            'data' => $ungTuyen->fresh($this->loadApplicationRelations()),
+        ]);
+    }
+
+    public function phanHoiOffer(PhanHoiOfferRequest $request, int $id): JsonResponse
+    {
+        $userId = auth()->id();
+
+        if (!$userId) {
+            return $this->unauthorizedResponse();
+        }
+
+        $ungTuyen = UngTuyen::query()
+            ->where('id', $id)
+            ->whereHas('hoSo', function ($query) use ($userId) {
+                $query->withTrashed()->where('nguoi_dung_id', $userId);
+            })
+            ->whereNotNull('thoi_gian_ung_tuyen')
+            ->with($this->loadApplicationRelations())
+            ->firstOrFail();
+
+        if ($ungTuyen->da_rut_don) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn ứng tuyển đã được rút nên không thể phản hồi offer.',
+            ], 422);
+        }
+
+        if ((int) $ungTuyen->trang_thai !== UngTuyen::TRANG_THAI_DA_GUI_OFFER) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn ứng tuyển này hiện không ở trạng thái chờ phản hồi offer.',
+            ], 422);
+        }
+
+        $normalizedAction = strtolower(trim((string) $request->input('action')));
+        $newStatus = $normalizedAction === 'accept'
+            ? UngTuyen::TRANG_THAI_DA_NHAN_VIEC
+            : UngTuyen::TRANG_THAI_TU_CHOI_OFFER;
+
+        $ungTuyen->fill([
+            'trang_thai' => $newStatus,
+            'thoi_gian_phan_hoi_offer' => $this->nowUtc(),
+        ]);
+        $this->appendHistory(
+            $ungTuyen,
+            'offer_responded',
+            $newStatus === UngTuyen::TRANG_THAI_DA_NHAN_VIEC
+                ? 'Ứng viên đã chấp nhận offer.'
+                : 'Ứng viên đã từ chối offer.',
+            [
+                'action' => $normalizedAction,
+            ]
+        );
+        $ungTuyen->save();
+        return response()->json([
+            'success' => true,
+            'message' => $newStatus === UngTuyen::TRANG_THAI_DA_NHAN_VIEC
+                ? 'Bạn đã chấp nhận đề nghị nhận việc.'
+                : 'Bạn đã từ chối đề nghị nhận việc.',
+            'data' => $ungTuyen->fresh($this->loadApplicationRelations()),
         ]);
     }
 
@@ -433,10 +498,80 @@ class UngVienUngTuyenController extends Controller
             'trang_thai_tham_gia_phong_van' => $status,
             'thoi_gian_phan_hoi_phong_van' => $this->nowUtc(),
         ]);
+        $this->appendHistory(
+            $ungTuyen,
+            'interview_attendance_confirmed',
+            $status === UngTuyen::PHONG_VAN_DA_XAC_NHAN
+                ? 'Ứng viên đã xác nhận tham gia phỏng vấn từ email.'
+                : 'Ứng viên đã phản hồi không thể tham gia phỏng vấn từ email.',
+            [
+                'attendance_status' => $status,
+                'source' => 'email',
+            ]
+        );
         $ungTuyen->save();
 
         return redirect($this->buildInterviewResponseRedirectUrl(
             $status === UngTuyen::PHONG_VAN_DA_XAC_NHAN ? 'accepted' : 'declined',
+            $id
+        ));
+    }
+
+    public function xacNhanOfferQuaEmail(Request $request, int $id, string $action): RedirectResponse
+    {
+        if (!$request->hasValidSignature()) {
+            return redirect($this->buildOfferResponseRedirectUrl('invalid', $id));
+        }
+
+        $ungTuyen = UngTuyen::query()
+            ->with([
+                'hoSo' => function ($query) {
+                    $query->withTrashed()->with('nguoiDung');
+                },
+            ])
+            ->findOrFail($id);
+
+        $ownerId = (int) ($ungTuyen->hoSo?->nguoiDung?->id ?? 0);
+        $expectedOwnerId = (int) $request->integer('user');
+
+        if (!$ownerId || $ownerId !== $expectedOwnerId) {
+            return redirect($this->buildOfferResponseRedirectUrl('invalid', $id));
+        }
+
+        if ($ungTuyen->da_rut_don || (int) $ungTuyen->trang_thai !== UngTuyen::TRANG_THAI_DA_GUI_OFFER) {
+            return redirect($this->buildOfferResponseRedirectUrl('locked', $id));
+        }
+
+        $normalizedAction = strtolower(trim($action));
+        $newStatus = match ($normalizedAction) {
+            'accept' => UngTuyen::TRANG_THAI_DA_NHAN_VIEC,
+            'decline' => UngTuyen::TRANG_THAI_TU_CHOI_OFFER,
+            default => null,
+        };
+
+        if ($newStatus === null) {
+            return redirect($this->buildOfferResponseRedirectUrl('invalid', $id));
+        }
+
+        $ungTuyen->fill([
+            'trang_thai' => $newStatus,
+            'thoi_gian_phan_hoi_offer' => $this->nowUtc(),
+        ]);
+        $this->appendHistory(
+            $ungTuyen,
+            'offer_responded',
+            $newStatus === UngTuyen::TRANG_THAI_DA_NHAN_VIEC
+                ? 'Ứng viên đã chấp nhận offer từ email.'
+                : 'Ứng viên đã từ chối offer từ email.',
+            [
+                'action' => $normalizedAction,
+                'source' => 'email',
+            ]
+        );
+        $ungTuyen->save();
+
+        return redirect($this->buildOfferResponseRedirectUrl(
+            $newStatus === UngTuyen::TRANG_THAI_DA_NHAN_VIEC ? 'accepted' : 'declined',
             $id
         ));
     }
@@ -446,6 +581,14 @@ class UngVienUngTuyenController extends Controller
         $frontEndUrl = rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/');
 
         return $frontEndUrl . '/applications?interview_response=' . urlencode($status)
+            . '&application_id=' . urlencode((string) $applicationId);
+    }
+
+    private function buildOfferResponseRedirectUrl(string $status, int $applicationId): string
+    {
+        $frontEndUrl = rtrim((string) env('FRONTEND_URL', 'http://localhost:5173'), '/');
+
+        return $frontEndUrl . '/applications?offer_response=' . urlencode($status)
             . '&application_id=' . urlencode((string) $applicationId);
     }
 }

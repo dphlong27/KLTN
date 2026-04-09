@@ -95,7 +95,11 @@ class TinTuyenDung extends Model
     public function acceptedApplications()
     {
         return $this->hasMany(\App\Models\UngTuyen::class, 'tin_tuyen_dung_id')
-            ->where('trang_thai', \App\Models\UngTuyen::TRANG_THAI_CHAP_NHAN)
+            ->whereIn('trang_thai', [
+                \App\Models\UngTuyen::TRANG_THAI_CHAP_NHAN,
+                \App\Models\UngTuyen::TRANG_THAI_DA_GUI_OFFER,
+                \App\Models\UngTuyen::TRANG_THAI_DA_NHAN_VIEC,
+            ])
             ->whereNotNull('thoi_gian_ung_tuyen');
     }
 

@@ -118,6 +118,7 @@ const loadApplications = async () => {
     error.value = err.message || 'Không thể tải danh sách ứng tuyển.'
     applications.value = []
     totalApplications.value = 0
+    notify.apiError(err, 'Không thể tải danh sách ứng tuyển.')
   } finally {
     loading.value = false
   }

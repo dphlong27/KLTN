@@ -25,6 +25,32 @@ use Illuminate\Support\Facades\Storage;
  */
 class HoSoController extends Controller
 {
+    private function hasBuilderPayload(array $data): bool
+    {
+        foreach (['ky_nang_json', 'kinh_nghiem_json', 'hoc_van_json', 'du_an_json', 'chung_chi_json'] as $field) {
+            if (!empty($data[$field]) && is_array($data[$field])) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function resolveProfileSource(array $data, bool $hasFile): string
+    {
+        $hasBuilder = $this->hasBuilderPayload($data);
+
+        if ($hasFile && $hasBuilder) {
+            return HoSo::NGUON_HO_SO_HYBRID;
+        }
+
+        if ($hasBuilder) {
+            return HoSo::NGUON_HO_SO_BUILDER;
+        }
+
+        return $hasFile ? HoSo::NGUON_HO_SO_UPLOAD : HoSo::NGUON_HO_SO_BUILDER;
+    }
+
     private function unauthorizedResponse(): JsonResponse
     {
         return response()->json([
@@ -83,11 +109,18 @@ class HoSoController extends Controller
 
         $data = $request->validated();
         $data['nguoi_dung_id'] = $nguoiDung->id;
+        $hasFile = false;
 
         // Upload file CV nếu có
         if ($request->hasFile('file_cv')) {
             $data['file_cv'] = $request->file('file_cv')
                 ->store('file_cv', 'public');
+            $hasFile = true;
+        }
+
+        $data['nguon_ho_so'] = $this->resolveProfileSource($data, $hasFile);
+        if (empty($data['mau_cv']) && $data['nguon_ho_so'] !== HoSo::NGUON_HO_SO_UPLOAD) {
+            $data['mau_cv'] = 'classic';
         }
 
         $hoSo = HoSo::create($data);
@@ -139,6 +172,7 @@ class HoSoController extends Controller
             ->findOrFail($id);
 
         $data = $request->validated();
+        $hasFile = !empty($hoSo->file_cv);
 
         // Upload file CV mới nếu có, xoá file cũ
         if ($request->hasFile('file_cv')) {
@@ -147,6 +181,16 @@ class HoSoController extends Controller
             }
             $data['file_cv'] = $request->file('file_cv')
                 ->store('file_cv', 'public');
+            $hasFile = true;
+        }
+
+        $merged = array_merge($hoSo->toArray(), $data);
+        $data['nguon_ho_so'] = $this->resolveProfileSource($merged, $hasFile);
+        if (empty($data['mau_cv']) && !empty($merged['mau_cv'])) {
+            $data['mau_cv'] = $merged['mau_cv'];
+        }
+        if (empty($data['mau_cv']) && $data['nguon_ho_so'] !== HoSo::NGUON_HO_SO_UPLOAD) {
+            $data['mau_cv'] = 'classic';
         }
 
         $hoSo->update($data);

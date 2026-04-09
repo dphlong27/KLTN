@@ -20,12 +20,16 @@ const STATUS_REVIEWED = String(APPLICATION_STATUS.REVIEWED)
 const STATUS_INTERVIEW = String(APPLICATION_STATUS.INTERVIEW_SCHEDULED)
 const STATUS_PASSED = String(APPLICATION_STATUS.INTERVIEW_PASSED)
 const STATUS_HIRED = String(APPLICATION_STATUS.HIRED)
+const STATUS_OFFER_SENT = String(APPLICATION_STATUS.OFFER_SENT)
+const STATUS_ONBOARDED = String(APPLICATION_STATUS.ONBOARDED)
+const STATUS_OFFER_DECLINED = String(APPLICATION_STATUS.OFFER_DECLINED)
 const STATUS_REJECTED = String(APPLICATION_STATUS.REJECTED)
 const STATUS_WITHDRAWN = 'withdrawn'
 
 const loading = ref(false)
 const updating = ref(false)
 const confirmingInterviewId = ref(null)
+const respondingOfferId = ref(null)
 const loadingProfiles = ref(false)
 const applications = ref([])
 const profiles = ref([])
@@ -41,6 +45,9 @@ const statusTotals = reactive({
   interview: 0,
   passed: 0,
   hired: 0,
+  offerSent: 0,
+  onboarded: 0,
+  offerDeclined: 0,
   rejected: 0,
   withdrawn: 0,
 })
@@ -61,6 +68,9 @@ const statusTabs = computed(() => [
   { value: STATUS_INTERVIEW, label: 'Đã hẹn phỏng vấn', total: statusTotals.interview },
   { value: STATUS_PASSED, label: 'Qua phỏng vấn', total: statusTotals.passed },
   { value: STATUS_HIRED, label: 'Trúng tuyển', total: statusTotals.hired },
+  { value: STATUS_OFFER_SENT, label: 'Đã gửi offer', total: statusTotals.offerSent },
+  { value: STATUS_ONBOARDED, label: 'Đã nhận việc', total: statusTotals.onboarded },
+  { value: STATUS_OFFER_DECLINED, label: 'Từ chối offer', total: statusTotals.offerDeclined },
   { value: STATUS_REJECTED, label: 'Đã từ chối', total: statusTotals.rejected },
   { value: STATUS_WITHDRAWN, label: 'Đã rút', total: statusTotals.withdrawn },
 ])
@@ -85,16 +95,16 @@ const stats = computed(() => [
     iconClass: 'bg-violet-100 text-violet-600',
   },
   {
-    label: 'Trúng tuyển',
-    value: statusTotals.hired,
+    label: 'Đã gửi offer',
+    value: statusTotals.offerSent,
     icon: 'task_alt',
-    iconClass: 'bg-green-100 text-green-600',
+    iconClass: 'bg-cyan-100 text-cyan-600',
   },
   {
-    label: 'Đã từ chối',
-    value: statusTotals.rejected,
-    icon: 'cancel',
-    iconClass: 'bg-red-100 text-red-600',
+    label: 'Đã nhận việc',
+    value: statusTotals.onboarded,
+    icon: 'workspace_premium',
+    iconClass: 'bg-green-100 text-green-600',
   },
 ])
 
@@ -140,6 +150,9 @@ const isInterviewResponseLocked = (application) => {
   return Boolean(application?.da_rut_don) || [
     APPLICATION_STATUS.INTERVIEW_PASSED,
     APPLICATION_STATUS.HIRED,
+    APPLICATION_STATUS.OFFER_SENT,
+    APPLICATION_STATUS.ONBOARDED,
+    APPLICATION_STATUS.OFFER_DECLINED,
     APPLICATION_STATUS.REJECTED,
   ].includes(Number(application?.trang_thai))
 }
@@ -158,9 +171,23 @@ const canWithdrawApplication = (application) => {
     && !isFinalApplicationStatus(application?.trang_thai)
 }
 
+const canRespondOffer = (application) => {
+  return !application?.da_rut_don && Number(application?.trang_thai) === APPLICATION_STATUS.OFFER_SENT
+}
+
 const shouldShowInterviewSection = (application) => {
   return Boolean(application?.ngay_hen_phong_van) && !isInterviewResponseLocked(application)
 }
+
+const shouldShowOfferSection = (application) => {
+  return [
+    APPLICATION_STATUS.OFFER_SENT,
+    APPLICATION_STATUS.ONBOARDED,
+    APPLICATION_STATUS.OFFER_DECLINED,
+  ].includes(Number(application?.trang_thai))
+}
+
+const formatOfferResponseDate = (value) => formatDateTimeVN(value, 'Chưa phản hồi')
 
 const editableApplication = computed(() => selectedApplication.value)
 const selectedProfile = computed(() =>
@@ -198,13 +225,16 @@ const fetchApplications = async (page = 1) => {
 
 const fetchStatusTotals = async () => {
   try {
-    const [allRes, pendingRes, reviewedRes, interviewRes, passedRes, hiredRes, rejectedRes, withdrawnRes] = await Promise.all([
+    const [allRes, pendingRes, reviewedRes, interviewRes, passedRes, hiredRes, offerSentRes, onboardedRes, offerDeclinedRes, rejectedRes, withdrawnRes] = await Promise.all([
       applicationService.getApplications({ page: 1, per_page: 1, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_PENDING, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_REVIEWED, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_INTERVIEW, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_PASSED, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_HIRED, da_rut_don: 0 }),
+      applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_OFFER_SENT, da_rut_don: 0 }),
+      applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_ONBOARDED, da_rut_don: 0 }),
+      applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_OFFER_DECLINED, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, trang_thai: STATUS_REJECTED, da_rut_don: 0 }),
       applicationService.getApplications({ page: 1, per_page: 1, da_rut_don: 1 }),
     ])
@@ -215,6 +245,9 @@ const fetchStatusTotals = async () => {
     statusTotals.interview = interviewRes?.data?.total || 0
     statusTotals.passed = passedRes?.data?.total || 0
     statusTotals.hired = hiredRes?.data?.total || 0
+    statusTotals.offerSent = offerSentRes?.data?.total || 0
+    statusTotals.onboarded = onboardedRes?.data?.total || 0
+    statusTotals.offerDeclined = offerDeclinedRes?.data?.total || 0
     statusTotals.rejected = rejectedRes?.data?.total || 0
     statusTotals.withdrawn = withdrawnRes?.data?.total || 0
   } catch {
@@ -224,6 +257,9 @@ const fetchStatusTotals = async () => {
     statusTotals.interview = 0
     statusTotals.passed = 0
     statusTotals.hired = 0
+    statusTotals.offerSent = 0
+    statusTotals.onboarded = 0
+    statusTotals.offerDeclined = 0
     statusTotals.rejected = 0
     statusTotals.withdrawn = 0
   }
@@ -336,6 +372,37 @@ const handleInterviewResponseFeedback = async () => {
   router.replace({ query })
 }
 
+const handleOfferResponseFeedback = async () => {
+  const response = typeof route.query.offer_response === 'string' ? route.query.offer_response : ''
+  const applicationId = typeof route.query.application_id === 'string' ? route.query.application_id : ''
+
+  if (!response) return
+
+  if (response === 'accepted') {
+    notify.success('Bạn đã chấp nhận offer thành công.')
+  } else if (response === 'declined') {
+    notify.success('Đã ghi nhận phản hồi từ chối offer của bạn.')
+  } else if (response === 'locked') {
+    notify.info('Offer này không còn khả dụng để phản hồi.')
+  } else if (response === 'expired') {
+    notify.warning('Liên kết phản hồi offer đã hết hạn.')
+  } else {
+    notify.error('Liên kết phản hồi offer không hợp lệ.')
+  }
+
+  await nextTick()
+
+  if (applicationId && applicationListRef.value) {
+    const target = applicationListRef.value.querySelector(`[data-application-id="${applicationId}"]`)
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  const query = { ...route.query }
+  delete query.offer_response
+  delete query.application_id
+  router.replace({ query })
+}
+
 const respondInterview = async (application, attendanceStatus) => {
   if (!application?.id || confirmingInterviewId.value) return
 
@@ -373,6 +440,29 @@ const withdrawApplication = async (application) => {
   }
 }
 
+const respondOffer = async (application, action) => {
+  if (!application?.id || respondingOfferId.value) return
+
+  respondingOfferId.value = application.id
+  try {
+    const response = await applicationService.respondOffer(application.id, action)
+    const updated = response?.data || null
+    applications.value = applications.value.map((item) =>
+      Number(item.id) === Number(updated?.id) ? updated : item
+    )
+    await fetchStatusTotals()
+    notify.success(
+      action === 'accept'
+        ? 'Bạn đã chấp nhận offer. Hệ thống đã ghi nhận trạng thái nhận việc.'
+        : 'Bạn đã từ chối offer.'
+    )
+  } catch (error) {
+    notify.apiError(error, 'Không thể phản hồi offer lúc này.')
+  } finally {
+    respondingOfferId.value = null
+  }
+}
+
 watch(activeStatus, async () => {
   await fetchApplications(1)
 })
@@ -380,6 +470,7 @@ watch(activeStatus, async () => {
 onMounted(async () => {
   await Promise.all([fetchApplications(), fetchStatusTotals()])
   await handleInterviewResponseFeedback()
+  await handleOfferResponseFeedback()
 })
 </script>
 
@@ -601,6 +692,63 @@ onMounted(async () => {
                 >
                   Đã rút lúc {{ formatDateTime(application.thoi_gian_rut_don) }}
                 </p>
+              </div>
+            </div>
+
+            <div
+              v-if="shouldShowOfferSection(application)"
+              class="rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4 dark:border-cyan-500/20 dark:bg-cyan-500/10"
+            >
+              <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="space-y-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <p class="text-sm font-bold text-slate-900 dark:text-white">Offer tuyển dụng</p>
+                    <span
+                      class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold"
+                      :class="statusMeta(application.trang_thai).classes"
+                    >
+                      <span class="size-1.5 rounded-full" :class="statusMeta(application.trang_thai).dot"></span>
+                      {{ statusMeta(application.trang_thai).label }}
+                    </span>
+                  </div>
+                  <p v-if="application.ghi_chu_offer" class="text-sm text-slate-600 dark:text-slate-300">
+                    {{ application.ghi_chu_offer }}
+                  </p>
+                  <p v-if="application.link_offer" class="text-xs text-slate-500 dark:text-slate-400 break-words">
+                    Link offer: {{ application.link_offer }}
+                  </p>
+                  <p v-if="application.thoi_gian_gui_offer" class="text-xs text-slate-500 dark:text-slate-400">
+                    Gửi lúc {{ formatDateTime(application.thoi_gian_gui_offer) }}
+                  </p>
+                  <p
+                    v-if="application.thoi_gian_phan_hoi_offer && Number(application.trang_thai) !== APPLICATION_STATUS.OFFER_SENT"
+                    class="text-xs text-slate-500 dark:text-slate-400"
+                  >
+                    Phản hồi lúc {{ formatOfferResponseDate(application.thoi_gian_phan_hoi_offer) }}
+                  </p>
+                </div>
+
+                <div
+                  v-if="canRespondOffer(application)"
+                  class="flex flex-wrap items-center gap-2 lg:justify-end"
+                >
+                  <button
+                    class="inline-flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-500/20 dark:bg-slate-950/40 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                    :disabled="respondingOfferId === application.id"
+                    type="button"
+                    @click="respondOffer(application, 'accept')"
+                  >
+                    {{ respondingOfferId === application.id ? 'Đang lưu...' : 'Chấp nhận offer' }}
+                  </button>
+                  <button
+                    class="inline-flex items-center justify-center rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:bg-slate-950/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                    :disabled="respondingOfferId === application.id"
+                    type="button"
+                    @click="respondOffer(application, 'decline')"
+                  >
+                    {{ respondingOfferId === application.id ? 'Đang lưu...' : 'Từ chối offer' }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -524,6 +524,10 @@ Route::patch('v1/ung-vien/ung-tuyens/{id}/xac-nhan-phong-van', [UngVienUngTuyenC
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ung-tuyens.confirm-interview');
 
+Route::patch('v1/ung-vien/ung-tuyens/{id}/phan-hoi-offer', [UngVienUngTuyenController::class, 'phanHoiOffer'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ung-tuyens.confirm-offer');
+
 Route::patch('v1/ung-vien/ung-tuyens/{id}/rut-don', [UngVienUngTuyenController::class, 'rutDon'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ung-tuyens.withdraw');
@@ -531,6 +535,10 @@ Route::patch('v1/ung-vien/ung-tuyens/{id}/rut-don', [UngVienUngTuyenController::
 Route::get('v1/ung-vien/ung-tuyens/{id}/xac-nhan-phong-van/email/{action}', [UngVienUngTuyenController::class, 'xacNhanPhongVanQuaEmail'])
     ->middleware('signed')
     ->name('ung-vien.ung-tuyens.confirm-interview-email');
+
+Route::get('v1/ung-vien/ung-tuyens/{id}/phan-hoi-offer/email/{action}', [UngVienUngTuyenController::class, 'xacNhanOfferQuaEmail'])
+    ->middleware('signed')
+    ->name('ung-vien.ung-tuyens.confirm-offer-email');
 
 Route::post('v1/ung-vien/ung-tuyens/generate-cover-letter', [CoverLetterController::class, 'generate'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
@@ -673,6 +681,18 @@ Route::patch('v1/nha-tuyen-dung/ung-tuyens/{id}/trang-thai', [NhaTuyenDungUngTuy
 Route::post('v1/nha-tuyen-dung/ung-tuyens/{id}/gui-lai-email-phong-van', [NhaTuyenDungUngTuyenController::class, 'guiLaiEmailPhongVan'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
     ->name('nha-tuyen-dung.ung-tuyens.gui-lai-email-phong-van');
+
+Route::post('v1/nha-tuyen-dung/ung-tuyens/{id}/gui-nhac-lich-phong-van', [NhaTuyenDungUngTuyenController::class, 'guiNhacLichPhongVan'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.ung-tuyens.gui-nhac-lich-phong-van');
+
+Route::post('v1/nha-tuyen-dung/ung-tuyens/{id}/gui-offer', [NhaTuyenDungUngTuyenController::class, 'guiOffer'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.ung-tuyens.gui-offer');
+
+Route::get('v1/nha-tuyen-dung/ung-tuyens/{id}/calendar', [NhaTuyenDungUngTuyenController::class, 'xuatLichPhongVan'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.ung-tuyens.calendar');
 
 
 // ============================================================

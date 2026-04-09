@@ -3,6 +3,7 @@ import AppLogo from '@/components/AppLogo.vue'
 import { reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authService } from '@/services/api'
+import { extractApiErrorMessage } from '@/utils/apiErrors'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,7 +89,7 @@ const handleResetPassword = async () => {
       router.push('/login')
     }, 1200)
   } catch (error) {
-    errorMessage.value = error.message || 'Không thể đặt lại mật khẩu.'
+    errorMessage.value = extractApiErrorMessage(error, 'Không thể đặt lại mật khẩu.')
   } finally {
     isLoading.value = false
   }

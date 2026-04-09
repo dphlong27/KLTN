@@ -172,6 +172,7 @@ const loadProfiles = async () => {
     profiles.value = []
     totalProfiles.value = 0
     error.value = err.message || 'Không thể tải danh sách hồ sơ ứng viên.'
+    notify.apiError(err, 'Không thể tải danh sách hồ sơ ứng viên.')
   } finally {
     loading.value = false
   }

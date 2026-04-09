@@ -901,6 +901,17 @@ export const employerApplicationService = {
     apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-lai-email-phong-van`, {
       method: 'POST',
     }),
+
+  sendInterviewReminder: (id) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-nhac-lich-phong-van`, {
+      method: 'POST',
+    }),
+
+  sendOffer: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-offer`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
 }
 
 // === Public Job APIs ===
@@ -1150,6 +1161,12 @@ export const applicationService = {
       body: JSON.stringify({
         trang_thai_tham_gia_phong_van,
       })
+    }),
+
+  respondOffer: (id, action) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/phan-hoi-offer`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action }),
     }),
 
   withdrawApplication: (id) =>

@@ -109,6 +109,7 @@ const loadIndustries = async () => {
     normalizeIndustries(response)
   } catch (err) {
     error.value = err.message || 'Không thể tải danh sách ngành nghề'
+    notify.apiError(err, 'Không thể tải danh sách ngành nghề.')
   } finally {
     loading.value = false
   }
@@ -170,6 +171,7 @@ const submitForm = async () => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể lưu ngành nghề'
+    notify.apiError(err, 'Không thể lưu ngành nghề.')
   } finally {
     saving.value = false
   }
@@ -182,6 +184,7 @@ const toggleStatus = async (industry) => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể cập nhật trạng thái'
+    notify.apiError(err, 'Không thể cập nhật trạng thái ngành nghề.')
   }
 }
 
@@ -199,6 +202,7 @@ const deleteIndustry = async () => {
     await refreshAll()
   } catch (err) {
     error.value = err.message || 'Không thể xóa ngành nghề'
+    notify.apiError(err, 'Không thể xóa ngành nghề.')
   }
 }
 
