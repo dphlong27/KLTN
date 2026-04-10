@@ -1,7 +1,8 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { employerCompanyService, employerJobService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { connectPublicChannel, leaveRealtimeChannel } from '@/services/realtime'
 import { getStoredEmployer } from '@/utils/authStorage'
 
 const notify = useNotify()
@@ -16,6 +17,7 @@ const stats = ref({
   totalJobs: 0,
   activeJobs: 0,
 })
+let followerChannelName = null
 
 const form = reactive({
   ten_cong_ty: '',
@@ -174,6 +176,25 @@ const fetchStats = async () => {
   }
 }
 
+const subscribeFollowerChannel = (companyId) => {
+  if (!companyId) return
+
+  followerChannelName = `company.public.${companyId}`
+
+  connectPublicChannel(followerChannelName)?.listen('.company.followers.updated', (payload) => {
+    const followerCount = Number(payload?.follower_count)
+
+    if (!Number.isFinite(followerCount)) return
+
+    company.value = company.value
+      ? {
+          ...company.value,
+          so_nguoi_theo_doi: followerCount,
+        }
+      : company.value
+  })
+}
+
 const saveCompany = async () => {
   if (!form.ten_cong_ty.trim() || !form.ma_so_thue.trim()) {
     notify.warning('Vui lòng nhập tối thiểu tên công ty và mã số thuế.')
@@ -233,6 +254,27 @@ const restoreFromServer = async () => {
 
 onMounted(async () => {
   await Promise.all([fetchIndustries(), fetchCompany(), fetchStats()])
+})
+
+watch(
+  () => company.value?.id,
+  (nextCompanyId, previousCompanyId) => {
+    if (previousCompanyId) {
+      leaveRealtimeChannel(`company.public.${previousCompanyId}`)
+    }
+
+    followerChannelName = null
+
+    if (nextCompanyId) {
+      subscribeFollowerChannel(nextCompanyId)
+    }
+  },
+)
+
+onUnmounted(() => {
+  if (followerChannelName) {
+    leaveRealtimeChannel(followerChannelName)
+  }
 })
 </script>
 
