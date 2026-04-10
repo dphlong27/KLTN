@@ -10,6 +10,7 @@ import {
   userService,
 } from '@/services/api'
 import { getStoredUser } from '@/utils/authStorage'
+import { connectPrivateChannel } from '@/services/realtime'
 import { APPLICATION_STATUS } from '@/utils/applicationStatus'
 
 const STORAGE_PREFIX = 'app_notifications_read'
@@ -99,6 +100,65 @@ const createNotification = ({
   icon,
   tone,
 })
+
+const getJobActivityType = (job) => {
+  const explicitType = String(job?.activity_type || '').toLowerCase()
+  if (explicitType === 'reopened') return 'reopened'
+
+  const publishedAt = normalizeTimestamp(job?.published_at || job?.created_at)
+  const reopenedAt = normalizeTimestamp(job?.reactivated_at)
+
+  if (reopenedAt && (!publishedAt || reopenedAt >= publishedAt)) {
+    return 'reopened'
+  }
+
+  return 'published'
+}
+
+const getJobActivityTime = (job) => {
+  const activityType = getJobActivityType(job)
+
+  if (activityType === 'reopened') {
+    return job?.reactivated_at || job?.activity_at || job?.published_at || job?.created_at || null
+  }
+
+  return job?.published_at || job?.activity_at || job?.created_at || null
+}
+
+const buildFollowedCompanyJobNotification = ({
+  company,
+  job,
+  notificationId,
+  message,
+}) => {
+  const jobId = Number(job?.id)
+  if (!jobId) return null
+
+  const activityType = getJobActivityType(job)
+  const activityTime = getJobActivityTime(job) || new Date().toISOString()
+  const companyId = Number(company?.id)
+  const companyName = company?.name || company?.ten_cong_ty || 'Công ty bạn theo dõi'
+  const jobTitle = job?.title || job?.tieu_de || 'vị trí tuyển dụng'
+  const isReopened = activityType === 'reopened'
+
+  return createNotification({
+    id: notificationId || `candidate-followed-company-job-${activityType}-${companyId}-${jobId}-${activityTime}`,
+    title: isReopened
+      ? 'Công ty bạn theo dõi vừa mở lại tin tuyển dụng'
+      : 'Công ty bạn theo dõi vừa đăng job mới',
+    message: message || (
+      isReopened
+        ? `${companyName} vừa mở lại vị trí ${jobTitle}.`
+        : `${companyName} vừa đăng vị trí ${jobTitle}.`
+    ),
+    time: activityTime,
+    to: `/jobs/${jobId}`,
+    icon: isReopened ? 'update' : 'campaign',
+    tone: isReopened
+      ? 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
+      : 'bg-[#2463eb]/10 text-[#2463eb]',
+  })
+}
 
 const buildCandidateNotifications = async () => {
   const [applicationsResult, followedCompaniesResult] = await Promise.allSettled([
@@ -205,26 +265,39 @@ const buildCandidateNotifications = async () => {
   const followItems = followedCompanies
     .flatMap((company) => {
       const followedAt = normalizeTimestamp(company?.theo_doi_luc)
-      const companyName = company?.ten_cong_ty || 'Công ty bạn đang theo dõi'
 
       return (company?.tin_tuyen_dungs || [])
-        .filter((job) => {
-          const createdAt = normalizeTimestamp(job?.created_at)
-          if (!createdAt) return false
-          if (followedAt && createdAt < followedAt) return false
-          return Number(job?.trang_thai) === 1
+        .map((job) => {
+          if (Number(job?.trang_thai) !== 1) return null
+
+          const publishedAt = normalizeTimestamp(job?.published_at || job?.created_at)
+          const reopenedAt = normalizeTimestamp(job?.reactivated_at)
+
+          if (reopenedAt && (!followedAt || reopenedAt >= followedAt)) {
+            return buildFollowedCompanyJobNotification({
+              company,
+              job: {
+                ...job,
+                activity_type: 'reopened',
+                activity_at: job?.reactivated_at,
+              },
+            })
+          }
+
+          if (publishedAt && (!followedAt || publishedAt >= followedAt)) {
+            return buildFollowedCompanyJobNotification({
+              company,
+              job: {
+                ...job,
+                activity_type: 'published',
+                activity_at: job?.published_at || job?.created_at,
+              },
+            })
+          }
+
+          return null
         })
-        .map((job) =>
-          createNotification({
-            id: `candidate-followed-company-job-${company.id}-${job.id}-${job.created_at}`,
-            title: 'Công ty bạn theo dõi vừa đăng job mới',
-            message: `${companyName} vừa đăng vị trí ${job.tieu_de || 'mới'}.`,
-            time: job.created_at,
-            to: `/jobs/${job.id}`,
-            icon: 'campaign',
-            tone: 'bg-[#2463eb]/10 text-[#2463eb]',
-          }),
-        )
+        .filter(Boolean)
     })
 
   return [...applicationItems, ...followItems]
@@ -478,11 +551,28 @@ export const useNotifications = (role) => {
   const loading = ref(false)
   const error = ref('')
   const rawItems = ref([])
+  const liveItems = ref([])
   const readIds = ref(new Set())
   let refreshTimer = null
+  let realtimeChannel = null
+
+  const mergedNotifications = computed(() => {
+    const byId = new Map()
+    const combinedItems = [...liveItems.value, ...rawItems.value]
+
+    combinedItems
+      .sort((a, b) => normalizeTimestamp(b.time) - normalizeTimestamp(a.time))
+      .forEach((item) => {
+        if (!byId.has(item.id)) {
+          byId.set(item.id, item)
+        }
+      })
+
+    return [...byId.values()]
+  })
 
   const items = computed(() =>
-    rawItems.value.map((item) => ({
+    mergedNotifications.value.map((item) => ({
       ...item,
       read: readIds.value.has(item.id),
     })),
@@ -506,9 +596,40 @@ export const useNotifications = (role) => {
 
   const markAllAsRead = () => {
     const nextReadIds = new Set(readIds.value)
-    rawItems.value.forEach((item) => nextReadIds.add(item.id))
+    mergedNotifications.value.forEach((item) => nextReadIds.add(item.id))
     readIds.value = nextReadIds
     persistReadState()
+  }
+
+  const pushLiveItem = (item) => {
+    if (!item?.id) return
+
+    const nextItems = [item, ...liveItems.value.filter((existing) => existing.id !== item.id)]
+    liveItems.value = nextItems
+  }
+
+  const subscribeCandidateRealtime = () => {
+    if (role !== 'candidate') return
+
+    const user = getStoredUser()
+    if (Number(user?.vai_tro) !== 0 || !user?.id) return
+
+    const realtimeChannelName = `candidate.${user.id}`
+
+    realtimeChannel = connectPrivateChannel(realtimeChannelName)
+
+    realtimeChannel?.listen('.company.job-activity', (payload) => {
+      const notification = buildFollowedCompanyJobNotification({
+        company: payload?.company,
+        job: payload?.job,
+        notificationId: payload?.notification_id,
+        message: payload?.message,
+      })
+
+      if (!notification) return
+
+      pushLiveItem(notification)
+    })
   }
 
   const refresh = async () => {
@@ -535,6 +656,7 @@ export const useNotifications = (role) => {
   onMounted(() => {
     hydrateReadState()
     void refresh()
+    subscribeCandidateRealtime()
 
     if (typeof window !== 'undefined') {
       window.addEventListener('focus', handleWindowFocus)
@@ -547,6 +669,11 @@ export const useNotifications = (role) => {
   onUnmounted(() => {
     if (typeof window !== 'undefined') {
       window.removeEventListener('focus', handleWindowFocus)
+    }
+
+    if (realtimeChannel) {
+      realtimeChannel.stopListening('.company.job-activity')
+      realtimeChannel = null
     }
 
     if (refreshTimer) {

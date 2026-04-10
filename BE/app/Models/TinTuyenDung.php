@@ -28,6 +28,8 @@ class TinTuyenDung extends Model
         'luot_xem',
         'cong_ty_id',
         'trang_thai',
+        'published_at',
+        'reactivated_at',
     ];
 
     protected $casts = [
@@ -39,6 +41,8 @@ class TinTuyenDung extends Model
         'cong_ty_id' => 'integer',
         'trang_thai' => 'integer',
         'ngay_het_han' => 'datetime',
+        'published_at' => 'datetime',
+        'reactivated_at' => 'datetime',
     ];
 
     protected $appends = [
