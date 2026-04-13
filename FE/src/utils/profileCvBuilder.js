@@ -1,10 +1,17 @@
 export const cvTemplateOptions = [
-  { value: 'classic', label: 'Classic' },
-  { value: 'minimal', label: 'Minimal' },
-  { value: 'executive', label: 'Executive' },
-  { value: 'modern', label: 'Modern' },
-  { value: 'creative', label: 'Creative' },
-  { value: 'compact', label: 'Compact' },
+  { value: 'classic', label: 'Classic', description: 'Cân bằng, dễ đọc, hợp đa số ngành nghề.' },
+  { value: 'minimal', label: 'Minimal', description: 'Tinh gọn, ưu tiên nội dung và độ sạch.' },
+  { value: 'executive', label: 'Executive', description: 'Trang trọng, hợp khối quản trị và tài chính.' },
+  { value: 'modern', label: 'Modern', description: 'Hiện đại, rõ kỹ năng và kinh nghiệm.' },
+  { value: 'creative', label: 'Creative', description: 'Nổi bật hơn, hợp truyền thông và thiết kế.' },
+  { value: 'compact', label: 'Compact', description: 'Cô đọng, hợp hồ sơ cần quét nhanh.' },
+]
+
+export const cvStylePreferenceOptions = [
+  { value: 'balanced', label: 'Cân bằng' },
+  { value: 'formal', label: 'Trang trọng' },
+  { value: 'creative', label: 'Nổi bật' },
+  { value: 'compact', label: 'Cô đọng' },
 ]
 
 export const cvSkillLevelOptions = [
@@ -226,4 +233,112 @@ export const buildProfileCvPrintHtml = ({ profile, owner }) => {
   <script>window.onload = () => window.print();</script>
 </body>
 </html>`
+}
+
+const industryPresetMatchers = [
+  {
+    keywords: ['cntt', 'công nghệ', 'it', 'software', 'developer', 'backend', 'frontend', 'mobile', 'data', 'ai'],
+    templates: {
+      balanced: 'modern',
+      formal: 'executive',
+      creative: 'modern',
+      compact: 'compact',
+    },
+    suggestedTitle: 'CV Kỹ sư phần mềm',
+    suggestedObjective:
+      'Tập trung vào kỹ năng công nghệ, dự án thực tế và khả năng triển khai sản phẩm. Ưu tiên thể hiện stack chính, kết quả đo lường được và khả năng cộng tác.',
+    suggestedSkills: ['Phân tích yêu cầu', 'Làm việc nhóm', 'Giải quyết vấn đề'],
+  },
+  {
+    keywords: ['thiết kế', 'design', 'ui', 'ux', 'creative', 'multimedia', 'branding'],
+    templates: {
+      balanced: 'creative',
+      formal: 'minimal',
+      creative: 'creative',
+      compact: 'modern',
+    },
+    suggestedTitle: 'CV Thiết kế sản phẩm số',
+    suggestedObjective:
+      'Nhấn mạnh tư duy thẩm mỹ, khả năng giải quyết bài toán người dùng và các sản phẩm hoặc case study đã triển khai.',
+    suggestedSkills: ['Wireframing', 'User research', 'Design system'],
+  },
+  {
+    keywords: ['marketing', 'truyền thông', 'content', 'seo', 'digital', 'social'],
+    templates: {
+      balanced: 'creative',
+      formal: 'classic',
+      creative: 'creative',
+      compact: 'compact',
+    },
+    suggestedTitle: 'CV Marketing tổng hợp',
+    suggestedObjective:
+      'Tập trung vào tăng trưởng, chiến dịch đã triển khai, chỉ số hiệu quả và khả năng phối hợp đa kênh.',
+    suggestedSkills: ['Lập kế hoạch chiến dịch', 'Phân tích dữ liệu', 'Content strategy'],
+  },
+  {
+    keywords: ['tài chính', 'kế toán', 'finance', 'accounting', 'kiểm toán', 'audit', 'ngân hàng'],
+    templates: {
+      balanced: 'executive',
+      formal: 'executive',
+      creative: 'classic',
+      compact: 'compact',
+    },
+    suggestedTitle: 'CV Tài chính - Kế toán',
+    suggestedObjective:
+      'Ưu tiên độ chính xác, tư duy kiểm soát và kinh nghiệm xử lý số liệu, báo cáo hoặc chuẩn tuân thủ.',
+    suggestedSkills: ['Phân tích số liệu', 'Báo cáo tài chính', 'Kiểm soát rủi ro'],
+  },
+  {
+    keywords: ['nhân sự', 'recruitment', 'hr', 'hành chính', 'operations', 'vận hành', 'customer service'],
+    templates: {
+      balanced: 'classic',
+      formal: 'executive',
+      creative: 'modern',
+      compact: 'compact',
+    },
+    suggestedTitle: 'CV Vận hành - Nhân sự',
+    suggestedObjective:
+      'Làm rõ khả năng tổ chức, phối hợp và theo dõi quy trình vận hành hoặc tuyển dụng đầu cuối.',
+    suggestedSkills: ['Điều phối công việc', 'Giao tiếp nội bộ', 'Quản lý quy trình'],
+  },
+]
+
+const normalizeIndustryName = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+
+const resolveIndustryPreset = (industryName) => {
+  const normalized = normalizeIndustryName(industryName)
+  return industryPresetMatchers.find((item) => item.keywords.some((keyword) => normalized.includes(keyword))) || null
+}
+
+export const suggestCvTemplate = (industryName, preference = 'balanced') => {
+  const preset = resolveIndustryPreset(industryName)
+  if (!preset) {
+    const fallback = {
+      balanced: 'classic',
+      formal: 'executive',
+      creative: 'creative',
+      compact: 'compact',
+    }
+    return fallback[preference] || fallback.balanced
+  }
+
+  return preset.templates?.[preference] || preset.templates?.balanced || 'classic'
+}
+
+export const buildCvIndustryPreset = (industryName, preference = 'balanced') => {
+  const preset = resolveIndustryPreset(industryName)
+  const template = suggestCvTemplate(industryName, preference)
+
+  return {
+    template,
+    suggestedTitle: preset?.suggestedTitle || 'CV Ứng tuyển chuyên nghiệp',
+    suggestedObjective:
+      preset?.suggestedObjective ||
+      'Tập trung vào điểm mạnh cốt lõi, kết quả nổi bật và mức độ phù hợp với vị trí mục tiêu.',
+    suggestedSkills: preset?.suggestedSkills || ['Giao tiếp', 'Làm việc nhóm', 'Chủ động'],
+  }
 }

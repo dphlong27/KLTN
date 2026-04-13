@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { authService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
@@ -16,6 +17,7 @@ import {
 } from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
+const router = useRouter()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -42,12 +44,6 @@ const educationOptions = [
   { value: 'thac_si', label: 'Thạc sĩ' },
   { value: 'tien_si', label: 'Tiến sĩ' },
   { value: 'khac', label: 'Khác' },
-]
-
-const cvSourceOptions = [
-  { value: 'upload', label: 'Upload file CV' },
-  { value: 'builder', label: 'Tạo CV trực tiếp trên hệ thống' },
-  { value: 'hybrid', label: 'Kết hợp cả file và CV hệ thống' },
 ]
 
 const createSkillItem = () => ({ ten: '', muc_do: 'kha' })
@@ -303,7 +299,7 @@ const resetForm = () => {
   form.trinh_do = ''
   form.kinh_nghiem_nam = ''
   form.mo_ta_ban_than = ''
-  form.nguon_ho_so = 'builder'
+  form.nguon_ho_so = 'upload'
   form.mau_cv = 'classic'
   form.ky_nang_json = [createSkillItem()]
   form.kinh_nghiem_json = [createExperienceItem()]
@@ -365,7 +361,15 @@ const openCreateModal = () => {
   modalOpen.value = true
 }
 
+const openBuilderPage = (profileId = null) => {
+  router.push(profileId ? `/cv-builder?id=${profileId}` : '/cv-builder')
+}
+
 const openEditModal = (profile) => {
+  if (hasBuilderCv(profile)) {
+    openBuilderPage(profile.id)
+    return
+  }
   editingProfileId.value = profile.id
   fillForm(profile)
   modalOpen.value = true
@@ -596,19 +600,29 @@ onMounted(fetchProfiles)
 
 <template>
   <div>
-    <div class="flex justify-between items-end mb-8">
+    <div class="mb-8 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
       <div>
         <h1 class="text-2xl font-bold text-slate-900 dark:text-white">CV của tôi</h1>
         <p class="text-slate-500 text-sm mt-1">Quản lý hồ sơ xin việc, chuẩn bị nhiều phiên bản CV cho các vị trí khác nhau.</p>
       </div>
-      <button
-        class="bg-[#2463eb] text-white px-5 py-2.5 rounded-lg font-bold flex items-center gap-2 shadow-lg shadow-[#2463eb]/20 hover:bg-[#2463eb]/90 transition-all text-sm"
-        type="button"
-        @click="openCreateModal"
-      >
-        <span class="material-symbols-outlined text-xl">add</span>
-        Tạo CV mới
-      </button>
+      <div class="flex flex-wrap gap-3">
+        <button
+          class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+          type="button"
+          @click="openCreateModal"
+        >
+          <span class="material-symbols-outlined text-xl">upload_file</span>
+          Upload CV có sẵn
+        </button>
+        <button
+          class="inline-flex items-center gap-2 rounded-lg bg-[#2463eb] px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition hover:bg-[#2463eb]/90"
+          type="button"
+          @click="openBuilderPage()"
+        >
+          <span class="material-symbols-outlined text-xl">edit_note</span>
+          Tạo CV trên hệ thống
+        </button>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 gap-4 mb-8 md:grid-cols-2 xl:grid-cols-4">
@@ -654,10 +668,10 @@ onMounted(fetchProfiles)
       <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.24em] text-blue-500">CV Builder</p>
-          <h2 class="mt-2 text-xl font-bold text-slate-900 dark:text-white">Tạo CV trực tiếp trên hệ thống</h2>
+          <h2 class="mt-2 text-xl font-bold text-slate-900 dark:text-white">CV builder đã được tách ra page riêng</h2>
           <p class="mt-2 max-w-3xl text-sm leading-7 text-slate-600 dark:text-slate-400">
-            Bạn có thể dựng CV dạng TopCV ngay trong hệ thống, chọn mẫu hiển thị, điền kỹ năng, kinh nghiệm, học vấn,
-            dự án và xuất bản in/PDF cơ bản mà không cần phụ thuộc hoàn toàn vào file upload.
+            Từ bây giờ, chức năng tạo CV trực tiếp được mở riêng để bạn chọn template theo ngành nghề và theo sở thích.
+            Khu vực này chỉ còn giữ vai trò quản lý danh sách hồ sơ và các CV đã tạo.
           </p>
         </div>
         <div class="flex flex-wrap gap-3">
@@ -667,6 +681,13 @@ onMounted(fetchProfiles)
           <span class="rounded-full bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm dark:bg-slate-800 dark:text-slate-200">
             {{ parsedProfiles }} CV đã parse AI
           </span>
+          <button
+            class="rounded-full bg-[#2463eb] px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700"
+            type="button"
+            @click="openBuilderPage()"
+          >
+            Mở CV Builder
+          </button>
         </div>
       </div>
     </div>
@@ -687,13 +708,22 @@ onMounted(fetchProfiles)
       <p class="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-500 dark:text-slate-400">
         Tạo hồ sơ đầu tiên để bắt đầu ứng tuyển. Bạn có thể chuẩn bị nhiều phiên bản CV cho các vị trí khác nhau.
       </p>
-      <button
-        class="mt-6 inline-flex rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
-        type="button"
-        @click="openCreateModal"
-      >
-        Tạo hồ sơ đầu tiên
-      </button>
+      <div class="mt-6 flex flex-wrap justify-center gap-3">
+        <button
+          class="inline-flex rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+          type="button"
+          @click="openCreateModal"
+        >
+          Upload CV có sẵn
+        </button>
+        <button
+          class="inline-flex rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700"
+          type="button"
+          @click="openBuilderPage()"
+        >
+          Tạo CV trên hệ thống
+        </button>
+      </div>
     </div>
 
     <div v-else class="space-y-4">
@@ -794,7 +824,8 @@ onMounted(fetchProfiles)
               type="button"
               @click="openEditModal(profile)"
             >
-              <span class="material-symbols-outlined text-[18px]">edit</span> Chỉnh sửa
+              <span class="material-symbols-outlined text-[18px]">edit</span>
+              {{ hasBuilderCv(profile) ? 'Sửa CV hệ thống' : 'Chỉnh sửa' }}
             </button>
             <button
               class="flex items-center justify-center size-9 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -817,7 +848,7 @@ onMounted(fetchProfiles)
         @click="openCreateModal"
       >
         <span class="material-symbols-outlined text-2xl group-hover:scale-110 transition-transform">note_add</span>
-        <span class="font-medium">Tạo thêm hồ sơ để ứng tuyển nhiều vị trí khác nhau</span>
+        <span class="font-medium">Upload thêm CV có sẵn</span>
       </button>
     </div>
 
@@ -829,9 +860,9 @@ onMounted(fetchProfiles)
       <div class="mx-auto w-full max-w-5xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
         <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">{{ editingProfileId ? 'Chỉnh sửa hồ sơ' : 'Tạo hồ sơ mới' }}</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">{{ editingProfileId ? 'Chỉnh sửa hồ sơ upload' : 'Tạo hồ sơ upload mới' }}</p>
             <h3 class="mt-2 text-2xl font-bold text-slate-900">
-              {{ editingProfileId ? 'Cập nhật hồ sơ ứng tuyển' : 'Chuẩn bị hồ sơ ứng tuyển mới' }}
+              {{ editingProfileId ? 'Cập nhật hồ sơ có file CV' : 'Tạo hồ sơ bằng file CV có sẵn' }}
             </h3>
           </div>
           <button
@@ -911,16 +942,11 @@ onMounted(fetchProfiles)
             </div>
 
             <div>
-            <label class="mb-2 block text-sm font-semibold text-slate-700">Kiểu hồ sơ</label>
-            <select
-              v-model="form.nguon_ho_so"
-              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-            >
-              <option v-for="option in cvSourceOptions" :key="option.value" :value="option.value">
-                {{ option.label }}
-              </option>
-            </select>
-          </div>
+              <label class="mb-2 block text-sm font-semibold text-slate-700">Kiểu hồ sơ</label>
+              <div class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                Upload file CV
+              </div>
+            </div>
 
             <div class="md:col-span-2">
             <label class="mb-2 block text-sm font-semibold text-slate-700">File CV (PDF/DOC/DOCX)</label>
@@ -929,7 +955,7 @@ onMounted(fetchProfiles)
               {{ selectedFile ? selectedFile.name : editingProfileId ? 'Chọn file mới nếu muốn thay thế CV hiện tại' : 'Chọn file CV để upload' }}
             </label>
               <p class="mt-2 text-xs text-slate-500">
-                Chọn <span class="font-semibold">Upload file</span> nếu bạn đã có CV sẵn, hoặc dùng <span class="font-semibold">CV builder</span> bên dưới để dựng trực tiếp trên hệ thống.
+                Nếu muốn dựng CV trực tiếp theo template, hãy dùng nút <span class="font-semibold">Tạo CV trên hệ thống</span> ở đầu trang.
               </p>
             </div>
           </div>
