@@ -2,10 +2,12 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { employerJobService, jobService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
 
 const notify = useNotify()
+const { canManageJobs, currentInternalRoleLabel, assignableMembers, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -26,9 +28,16 @@ const expiryTimeInput = ref(null)
 const filters = reactive({
   search: '',
   trang_thai: 'all',
+  hr_phu_trach_id: '',
   page: 1,
   per_page: 10,
 })
+
+const hrFilterOptions = computed(() => ([
+  { id: '', label: 'Tất cả HR phụ trách' },
+  { id: 'me', label: 'Tôi phụ trách' },
+  ...assignableMembers.value,
+]))
 
 const jobForm = reactive({
   tieu_de: '',
@@ -41,6 +50,7 @@ const jobForm = reactive({
   kinh_nghiem_yeu_cau: '',
   ngay_het_han: '',
   trang_thai: 1,
+  hr_phu_trach_id: '',
   nganh_nghes: [],
 })
 
@@ -55,6 +65,7 @@ const resetJobForm = () => {
   jobForm.kinh_nghiem_yeu_cau = ''
   jobForm.ngay_het_han = ''
   jobForm.trang_thai = 1
+  jobForm.hr_phu_trach_id = ''
   jobForm.nganh_nghes = []
   expiryDate.value = ''
   expiryDateDisplay.value = ''
@@ -264,12 +275,20 @@ const fetchEmployerJobs = async () => {
 }
 
 const openCreateModal = () => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể đăng tin tuyển dụng.`)
+    return
+  }
   editingJobId.value = null
   resetJobForm()
   showModal.value = true
 }
 
 const openEditModal = (job) => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể chỉnh sửa tin tuyển dụng.`)
+    return
+  }
   editingJobId.value = job.id
   jobForm.tieu_de = job.tieu_de || ''
   jobForm.mo_ta_cong_viec = job.mo_ta_cong_viec || ''
@@ -281,6 +300,7 @@ const openEditModal = (job) => {
   jobForm.kinh_nghiem_yeu_cau = job.kinh_nghiem_yeu_cau || ''
   jobForm.ngay_het_han = formatDateTimeInput(job.ngay_het_han)
   jobForm.trang_thai = Number(job.trang_thai ?? 1)
+  jobForm.hr_phu_trach_id = job.hr_phu_trach?.id ? String(job.hr_phu_trach.id) : ''
   jobForm.nganh_nghes = (job.nganh_nghes || []).map((item) => item.id)
   syncExpiryInputsFromForm()
   showModal.value = true
@@ -292,6 +312,10 @@ const closeModal = () => {
 }
 
 const openDeleteModal = (job) => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể xóa tin tuyển dụng.`)
+    return
+  }
   if (!canDeleteJob(job)) {
     notify.warning('Tin này đã có ứng tuyển. Hãy chuyển sang tạm ngưng thay vì xóa.')
     return
@@ -335,10 +359,16 @@ const buildPayload = () => ({
   kinh_nghiem_yeu_cau: jobForm.kinh_nghiem_yeu_cau || null,
   ngay_het_han: jobForm.ngay_het_han || null,
   trang_thai: Number(jobForm.trang_thai ?? 1),
+  hr_phu_trach_id: jobForm.hr_phu_trach_id ? Number(jobForm.hr_phu_trach_id) : null,
   nganh_nghes: jobForm.nganh_nghes,
 })
 
 const submitJobForm = async () => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể lưu thay đổi tin tuyển dụng.`)
+    return
+  }
+
   if (!commitExpiryDateDisplay()) {
     notify.warning('Vui lòng nhập ngày hết hạn theo định dạng dd/mm/yyyy.')
     return
@@ -377,6 +407,11 @@ const submitJobForm = async () => {
 }
 
 const toggleJobStatus = async (job) => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
+    return
+  }
+
   try {
     await employerJobService.toggleStatus(job.id)
     notify.success(`Đã chuyển trạng thái sang ${Number(job.trang_thai) === 1 ? 'tạm ngưng' : 'đang hoạt động'}.`)
@@ -387,6 +422,11 @@ const toggleJobStatus = async (job) => {
 }
 
 const deleteJob = async (job) => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể xóa tin tuyển dụng.`)
+    return
+  }
+
   try {
     await employerJobService.deleteJob(job.id)
     notify.deleted('Tin tuyển dụng')
@@ -398,6 +438,11 @@ const deleteJob = async (job) => {
 }
 
 const parseJob = async (job) => {
+  if (!canManageJobs.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
+    return
+  }
+
   try {
     await employerJobService.parseJob(job.id)
     notify.success('Đã gửi yêu cầu parse JD cho tin tuyển dụng.')
@@ -418,7 +463,7 @@ const applyFilters = async () => {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchIndustries(), fetchEmployerJobs()])
+  await Promise.all([ensurePermissionsLoaded(), fetchIndustries(), fetchEmployerJobs()])
 })
 
 watch([expiryDate, expiryTime], ([dateValue, timeValue]) => {
@@ -445,7 +490,8 @@ watch(expiryDate, (value) => {
         </p>
       </div>
       <button
-        class="flex h-11 items-center justify-center gap-2 rounded-lg bg-[#2463eb] px-6 font-semibold text-white shadow-lg shadow-[#2463eb]/20 transition-colors hover:bg-blue-700"
+        class="flex h-11 items-center justify-center gap-2 rounded-lg bg-[#2463eb] px-6 font-semibold text-white shadow-lg shadow-[#2463eb]/20 transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        :disabled="!canManageJobs"
         type="button"
         @click="openCreateModal"
       >
@@ -469,6 +515,13 @@ watch(expiryDate, (value) => {
     </div>
 
     <template v-else>
+      <div
+        v-if="!canManageJobs"
+        class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+      >
+        Bạn đang đăng nhập với vai trò <span class="font-bold">{{ currentInternalRoleLabel }}</span>. Màn này đang ở chế độ chỉ xem, các thao tác tạo và cập nhật tin tuyển dụng đã bị khóa.
+      </div>
+
       <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div
           v-for="card in statCards"
@@ -499,7 +552,7 @@ watch(expiryDate, (value) => {
           </button>
         </div>
 
-        <div class="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 dark:border-slate-800 md:grid-cols-[minmax(0,1fr)_180px_140px]">
+        <div class="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 dark:border-slate-800 md:grid-cols-[minmax(0,1fr)_220px_180px_140px]">
           <input
             v-model="filters.search"
             class="w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
@@ -507,6 +560,15 @@ watch(expiryDate, (value) => {
             type="text"
             @keyup.enter="applyFilters"
           >
+          <select
+            v-model="filters.hr_phu_trach_id"
+            class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
+            @change="applyFilters"
+          >
+            <option v-for="option in hrFilterOptions" :key="option.id || 'all-hr'" :value="option.id">
+              {{ option.label }}
+            </option>
+          </select>
           <select
             v-model="filters.per_page"
             class="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
@@ -560,6 +622,9 @@ watch(expiryDate, (value) => {
                       {{ job.tieu_de }}
                     </RouterLink>
                     <span class="mt-1 text-xs text-slate-500">{{ job.dia_diem_lam_viec }} · {{ job.cap_bac || 'Chưa đặt cấp bậc' }}</span>
+                    <span class="mt-1 text-xs text-slate-400">
+                      HR phụ trách: {{ job.hr_phu_trach?.ho_ten || 'Chưa gán' }}
+                    </span>
                     <span
                       class="mt-2 inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold"
                       :class="isQuotaFull(job) ? 'bg-rose-500/10 text-rose-300' : 'bg-emerald-500/10 text-emerald-300'"
@@ -601,7 +666,8 @@ watch(expiryDate, (value) => {
                       <span class="material-symbols-outlined text-[18px]">visibility</span>
                     </RouterLink>
                     <button
-                      class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-[#2463eb]/10 hover:text-[#2463eb]"
+                      class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-[#2463eb]/10 hover:text-[#2463eb] disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="!canManageJobs"
                       title="Sửa tin"
                       type="button"
                       @click="openEditModal(job)"
@@ -609,7 +675,8 @@ watch(expiryDate, (value) => {
                       <span class="material-symbols-outlined text-[18px]">edit</span>
                     </button>
                     <button
-                      class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-violet-500/10 hover:text-violet-300"
+                      class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-violet-500/10 hover:text-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="!canManageJobs"
                       title="Parse JD"
                       type="button"
                       @click="parseJob(job)"
@@ -617,7 +684,8 @@ watch(expiryDate, (value) => {
                       <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
                     </button>
                     <button
-                      class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-amber-500/10 hover:text-amber-300"
+                      class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-amber-500/10 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="!canManageJobs"
                       :title="Number(job.trang_thai) === 1 ? 'Tạm ngưng tin' : 'Bật lại tin'"
                       type="button"
                       @click="toggleJobStatus(job)"
@@ -631,6 +699,7 @@ watch(expiryDate, (value) => {
                       :class="canDeleteJob(job)
                         ? 'text-slate-400 hover:bg-red-500/10 hover:text-red-400'
                         : 'text-slate-300/80 hover:bg-amber-500/10 hover:text-amber-400 dark:text-slate-600 dark:hover:text-amber-300'"
+                      :disabled="!canManageJobs"
                       :title="canDeleteJob(job) ? 'Xóa tin' : `Tin đã có ${getSubmittedApplicationCount(job)} ứng tuyển, hãy tạm ngưng thay vì xóa`"
                       type="button"
                       @click="openDeleteModal(job)"
@@ -785,6 +854,16 @@ watch(expiryDate, (value) => {
             </select>
           </label>
 
+          <label class="block">
+            <span class="mb-2 block text-sm font-semibold text-slate-300">HR phụ trách</span>
+            <select v-model="jobForm.hr_phu_trach_id" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]">
+              <option value="">Tự gán theo người thao tác</option>
+              <option v-for="member in assignableMembers" :key="member.id" :value="String(member.id)">
+                {{ member.label }}
+              </option>
+            </select>
+          </label>
+
           <div class="md:col-span-2">
             <span class="mb-2 block text-sm font-semibold text-slate-300">Ngành nghề</span>
             <div class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 p-3 sm:grid-cols-2">
@@ -824,7 +903,7 @@ watch(expiryDate, (value) => {
           </button>
           <button
             class="rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="saving"
+            :disabled="saving || !canManageJobs"
             type="button"
             @click="submitJobForm"
           >

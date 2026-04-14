@@ -1,18 +1,24 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { jobService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate } from '@/utils/authStorage'
 import ProfileCvPreview from '@/components/Dashboard/ProfileCvPreview.vue'
 import {
-  buildCvIndustryPreset,
+  buildCvPresetByMode,
   buildProfileCvPrintHtml,
+  cvStyleFamilyOptions,
   cvSkillLevelOptions,
+  cvTargetPositionOptions,
+  cvTemplateModeOptions,
   cvStylePreferenceOptions,
   cvTemplateLabel,
   cvTemplateOptions,
-  suggestCvTemplate,
+  getCvTemplatesForMode,
+  inferCvStyleFamily,
+  resolveProfileCvAvatarUrl,
+  suggestCvTemplateByMode,
 } from '@/utils/profileCvBuilder'
 
 const route = useRoute()
@@ -26,7 +32,11 @@ const previewModalOpen = ref(false)
 const currentCandidate = ref(getStoredCandidate())
 const industryOptions = ref([])
 const selectedIndustryId = ref('')
+const templateMode = ref('style')
+const styleFamily = ref('executive_navy')
+const targetPosition = ref('')
 const stylePreference = ref('balanced')
+const cvPhotoObjectUrl = ref('')
 
 const educationOptions = [
   { value: 'trung_hoc', label: 'Trung học' },
@@ -51,7 +61,13 @@ const form = reactive({
   kinh_nghiem_nam: '',
   mo_ta_ban_than: '',
   nguon_ho_so: 'builder',
-  mau_cv: 'classic',
+  mau_cv: 'executive_navy',
+  che_do_mau_cv: 'style',
+  vi_tri_ung_tuyen_muc_tieu: '',
+  ten_nganh_nghe_muc_tieu: '',
+  che_do_anh_cv: 'profile',
+  anh_cv: null,
+  anh_cv_url: '',
   ky_nang_json: [createSkillItem()],
   kinh_nghiem_json: [createExperienceItem()],
   hoc_van_json: [createEducationItem()],
@@ -94,8 +110,8 @@ const editingProfileId = computed(() => {
 const pageTitle = computed(() => (editingProfileId.value ? 'Chỉnh sửa CV hệ thống' : 'Tạo CV trên hệ thống'))
 const pageDescription = computed(() =>
   editingProfileId.value
-    ? 'Cập nhật CV builder đang có, thay template hoặc hoàn thiện thêm các section.'
-    : 'Dựng CV trực tiếp trên hệ thống, chọn template theo ngành nghề hoặc gu hiển thị của bạn.',
+    ? 'Cập nhật CV builder với các mẫu bám theo layout tham chiếu bạn đã chọn.'
+    : 'Dựng CV trực tiếp trên hệ thống với các mẫu bám theo layout tham chiếu thực tế, có thể chọn theo phong cách hoặc theo vị trí ứng tuyển.',
 )
 
 const selectedIndustry = computed(() =>
@@ -106,10 +122,34 @@ const selectedIndustryName = computed(
   () => selectedIndustry.value?.ten_nganh || selectedIndustry.value?.ten_nganh_nghe || '',
 )
 
-const industryPreset = computed(() => buildCvIndustryPreset(selectedIndustryName.value, stylePreference.value))
-const recommendedTemplate = computed(() => suggestCvTemplate(selectedIndustryName.value, stylePreference.value))
+const recommendedTemplate = computed(() => suggestCvTemplateByMode({
+  mode: templateMode.value,
+  industryName: selectedIndustryName.value,
+  styleFamily: styleFamily.value,
+  positionValue: targetPosition.value,
+  preference: stylePreference.value,
+}))
+const candidateAvatarUrl = computed(() =>
+  currentCandidate.value?.avatar_url ||
+  currentCandidate.value?.anh_dai_dien_url ||
+  currentCandidate.value?.anh_dai_dien ||
+  '',
+)
+const cvPhotoPreviewUrl = computed(() => {
+  if (form.che_do_anh_cv !== 'upload') {
+    return ''
+  }
+
+  return cvPhotoObjectUrl.value || form.anh_cv_url || ''
+})
+const availableTemplates = computed(() => getCvTemplatesForMode(templateMode.value, styleFamily.value))
 const previewProfile = computed(() => ({
   ...form,
+  che_do_mau_cv: templateMode.value,
+  vi_tri_ung_tuyen_muc_tieu: targetPosition.value,
+  ten_nganh_nghe_muc_tieu: selectedIndustryName.value,
+  che_do_anh_cv: form.che_do_anh_cv,
+  anh_cv_preview_url: cvPhotoPreviewUrl.value,
   ky_nang_json: normalizeItems(form.ky_nang_json, ['ten']),
   kinh_nghiem_json: normalizeItems(form.kinh_nghiem_json, ['vi_tri']),
   hoc_van_json: normalizeItems(form.hoc_van_json, ['truong']),
@@ -117,14 +157,71 @@ const previewProfile = computed(() => ({
   chung_chi_json: normalizeItems(form.chung_chi_json, ['ten']),
 }))
 
+const templatePreviewBase = computed(() => ({
+  ...previewProfile.value,
+  tieu_de_ho_so: previewProfile.value.tieu_de_ho_so || 'Senior Product Manager',
+  muc_tieu_nghe_nghiep:
+    previewProfile.value.muc_tieu_nghe_nghiep ||
+    'Tập trung vào kinh nghiệm nổi bật, kỹ năng cốt lõi và cách trình bày phù hợp với vai trò mục tiêu.',
+  mo_ta_ban_than:
+    previewProfile.value.mo_ta_ban_than ||
+    'Ứng viên có kinh nghiệm thực tế, định hướng rõ ràng và muốn thể hiện hồ sơ theo bố cục dễ quét cho nhà tuyển dụng.',
+  vi_tri_ung_tuyen_muc_tieu: previewProfile.value.vi_tri_ung_tuyen_muc_tieu || 'Product Manager',
+  ten_nganh_nghe_muc_tieu: previewProfile.value.ten_nganh_nghe_muc_tieu || 'Công nghệ thông tin',
+  ky_nang_json: previewProfile.value.ky_nang_json.length
+    ? previewProfile.value.ky_nang_json
+    : [
+        { ten: 'Stakeholder Management', muc_do: 'tot' },
+        { ten: 'Product Strategy', muc_do: 'tot' },
+        { ten: 'Agile', muc_do: 'kha' },
+      ],
+  kinh_nghiem_json: previewProfile.value.kinh_nghiem_json.length
+    ? previewProfile.value.kinh_nghiem_json
+    : [
+        {
+          vi_tri: 'Product Manager',
+          cong_ty: 'Tech Company',
+          bat_dau: '03/2022',
+          ket_thuc: 'Hiện tại',
+          mo_ta: 'Dẫn dắt roadmap sản phẩm, phối hợp team đa chức năng và tối ưu trải nghiệm người dùng.',
+        },
+      ],
+  hoc_van_json: previewProfile.value.hoc_van_json.length
+    ? previewProfile.value.hoc_van_json
+    : [
+        {
+          truong: 'Đại học Duy Tân',
+          chuyen_nganh: 'Quản trị / Công nghệ',
+          bat_dau: '09/2018',
+          ket_thuc: '06/2022',
+          mo_ta: '',
+        },
+      ],
+}))
+
+const getTemplatePreviewProfile = (templateValue) => ({
+  ...templatePreviewBase.value,
+  mau_cv: templateValue,
+})
+
 const resetForm = () => {
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
   form.tieu_de_ho_so = ''
   form.muc_tieu_nghe_nghiep = ''
   form.trinh_do = ''
   form.kinh_nghiem_nam = ''
   form.mo_ta_ban_than = ''
   form.nguon_ho_so = 'builder'
-  form.mau_cv = 'classic'
+  form.mau_cv = 'executive_navy'
+  form.che_do_mau_cv = 'style'
+  form.vi_tri_ung_tuyen_muc_tieu = ''
+  form.ten_nganh_nghe_muc_tieu = ''
+  form.che_do_anh_cv = 'profile'
+  form.anh_cv = null
+  form.anh_cv_url = ''
   form.ky_nang_json = [createSkillItem()]
   form.kinh_nghiem_json = [createExperienceItem()]
   form.hoc_van_json = [createEducationItem()]
@@ -132,17 +229,30 @@ const resetForm = () => {
   form.chung_chi_json = []
   form.trang_thai = 1
   selectedIndustryId.value = ''
+  templateMode.value = 'style'
+  styleFamily.value = 'executive_navy'
+  targetPosition.value = ''
   stylePreference.value = 'balanced'
 }
 
 const fillForm = (profile) => {
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
   form.tieu_de_ho_so = profile?.tieu_de_ho_so || ''
   form.muc_tieu_nghe_nghiep = profile?.muc_tieu_nghe_nghiep || ''
   form.trinh_do = profile?.trinh_do || ''
   form.kinh_nghiem_nam = profile?.kinh_nghiem_nam ?? ''
   form.mo_ta_ban_than = profile?.mo_ta_ban_than || ''
   form.nguon_ho_so = 'builder'
-  form.mau_cv = profile?.mau_cv || 'classic'
+  form.mau_cv = profile?.mau_cv || 'executive_navy'
+  form.che_do_mau_cv = profile?.che_do_mau_cv || 'style'
+  form.vi_tri_ung_tuyen_muc_tieu = profile?.vi_tri_ung_tuyen_muc_tieu || ''
+  form.ten_nganh_nghe_muc_tieu = profile?.ten_nganh_nghe_muc_tieu || ''
+  form.che_do_anh_cv = profile?.che_do_anh_cv || 'profile'
+  form.anh_cv = null
+  form.anh_cv_url = profile?.anh_cv_url || ''
   form.ky_nang_json = Array.isArray(profile?.ky_nang_json) && profile.ky_nang_json.length
     ? profile.ky_nang_json.map((item) => ({ ten: item?.ten || '', muc_do: item?.muc_do || 'kha' }))
     : [createSkillItem()]
@@ -159,6 +269,35 @@ const fillForm = (profile) => {
     ? profile.chung_chi_json.map((item) => ({ ten: item?.ten || '', don_vi: item?.don_vi || '', nam: item?.nam || '' }))
     : []
   form.trang_thai = Number(profile?.trang_thai ?? 1)
+  templateMode.value = form.che_do_mau_cv || 'style'
+  targetPosition.value = form.vi_tri_ung_tuyen_muc_tieu || ''
+  styleFamily.value = inferCvStyleFamily(form.mau_cv)
+}
+
+const handleCvPhotoChange = (event) => {
+  const [file] = Array.from(event?.target?.files || [])
+  form.anh_cv = file || null
+
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
+
+  if (!file) {
+    return
+  }
+
+  cvPhotoObjectUrl.value = URL.createObjectURL(file)
+}
+
+const clearCvPhotoUpload = () => {
+  form.anh_cv = null
+  form.anh_cv_url = ''
+
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+    cvPhotoObjectUrl.value = ''
+  }
 }
 
 const loadIndustries = async () => {
@@ -216,14 +355,28 @@ const removeSectionItem = (field, index) => {
   }
 }
 
-const applyIndustryPreset = () => {
-  if (!selectedIndustryName.value) {
-    notify.warning('Hãy chọn ngành nghề trước khi áp preset.')
+const applyTemplatePreset = () => {
+  if (templateMode.value === 'position' && !targetPosition.value) {
+    notify.warning('Hãy chọn vị trí ứng tuyển trước khi áp preset.')
     return
   }
 
-  const preset = buildCvIndustryPreset(selectedIndustryName.value, stylePreference.value)
+  if (templateMode.value === 'style' && !selectedIndustryName.value && !styleFamily.value) {
+    notify.warning('Hãy chọn ít nhất ngành nghề hoặc phong cách trước khi áp preset.')
+    return
+  }
+
+  const preset = buildCvPresetByMode({
+    mode: templateMode.value,
+    industryName: selectedIndustryName.value,
+    styleFamily: styleFamily.value,
+    positionValue: targetPosition.value,
+    preference: stylePreference.value,
+  })
   form.mau_cv = preset.template
+  form.che_do_mau_cv = templateMode.value
+  form.vi_tri_ung_tuyen_muc_tieu = targetPosition.value
+  form.ten_nganh_nghe_muc_tieu = selectedIndustryName.value
 
   if (!String(form.tieu_de_ho_so).trim()) {
     form.tieu_de_ho_so = preset.suggestedTitle
@@ -239,7 +392,11 @@ const applyIndustryPreset = () => {
     form.ky_nang_json = [...normalizeItems(form.ky_nang_json, ['ten']), ...missingSkills.map((item) => createSkillItem(item, 'kha'))]
   }
 
-  notify.success(`Đã áp dụng preset CV cho ngành ${selectedIndustryName.value}.`)
+  notify.success(
+    templateMode.value === 'position'
+      ? 'Đã áp dụng preset CV theo vị trí ứng tuyển.'
+      : `Đã áp dụng preset CV theo phong cách ${cvStyleFamilyOptions.find((item) => item.value === styleFamily.value)?.label?.toLowerCase() || 'đã chọn'}.`
+  )
 }
 
 const exportPreview = () => {
@@ -270,7 +427,14 @@ const buildFormData = () => {
   payload.append('kinh_nghiem_nam', String(form.kinh_nghiem_nam || 0))
   payload.append('mo_ta_ban_than', form.mo_ta_ban_than || '')
   payload.append('nguon_ho_so', 'builder')
-  payload.append('mau_cv', form.mau_cv || 'classic')
+  payload.append('mau_cv', form.mau_cv || 'executive_navy')
+  payload.append('che_do_mau_cv', templateMode.value)
+  payload.append('vi_tri_ung_tuyen_muc_tieu', targetPosition.value || '')
+  payload.append('ten_nganh_nghe_muc_tieu', selectedIndustryName.value || '')
+  payload.append('che_do_anh_cv', form.che_do_anh_cv || 'profile')
+  if (form.che_do_anh_cv === 'upload' && form.anh_cv instanceof File) {
+    payload.append('anh_cv', form.anh_cv)
+  }
   payload.append('ky_nang_json', JSON.stringify(normalizeItems(form.ky_nang_json, ['ten'])))
   payload.append('kinh_nghiem_json', JSON.stringify(normalizeItems(form.kinh_nghiem_json, ['vi_tri'])))
   payload.append('hoc_van_json', JSON.stringify(normalizeItems(form.hoc_van_json, ['truong'])))
@@ -281,6 +445,11 @@ const buildFormData = () => {
 }
 
 const submitProfile = async () => {
+  if (form.che_do_anh_cv === 'upload' && !form.anh_cv && !form.anh_cv_url) {
+    notify.warning('Hãy chọn ảnh đại diện riêng cho CV hoặc chuyển sang dùng ảnh tài khoản.')
+    return
+  }
+
   saving.value = true
   try {
     const payload = buildFormData()
@@ -308,8 +477,59 @@ watch(
   { immediate: true },
 )
 
-onMounted(() => {
-  loadIndustries()
+watch(industryOptions, (items) => {
+  if (!form.ten_nganh_nghe_muc_tieu || selectedIndustryId.value) return
+
+  const matched = items.find((item) =>
+    String(item?.ten_nganh || item?.ten_nganh_nghe || '').trim().toLowerCase() ===
+    String(form.ten_nganh_nghe_muc_tieu || '').trim().toLowerCase()
+  )
+
+  if (matched?.id) {
+    selectedIndustryId.value = String(matched.id)
+  }
+})
+
+watch(templateMode, (mode) => {
+  form.che_do_mau_cv = mode
+
+  if (mode === 'style') {
+    targetPosition.value = ''
+    form.vi_tri_ung_tuyen_muc_tieu = ''
+    if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
+      form.mau_cv = suggestCvTemplateByMode({
+        mode,
+        industryName: selectedIndustryName.value,
+        styleFamily: styleFamily.value,
+        preference: stylePreference.value,
+      })
+    }
+    return
+  }
+
+  styleFamily.value = inferCvStyleFamily(form.mau_cv)
+  if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
+    form.mau_cv = recommendedTemplate.value
+  }
+})
+
+watch([styleFamily, targetPosition, selectedIndustryId], () => {
+  form.vi_tri_ung_tuyen_muc_tieu = targetPosition.value || ''
+  form.ten_nganh_nghe_muc_tieu = selectedIndustryName.value || ''
+
+  if (!availableTemplates.value.some((item) => item.value === form.mau_cv)) {
+    form.mau_cv = recommendedTemplate.value
+  }
+})
+
+onMounted(async () => {
+  await loadIndustries()
+})
+
+onBeforeUnmount(() => {
+  if (cvPhotoObjectUrl.value) {
+    URL.revokeObjectURL(cvPhotoObjectUrl.value)
+  }
 })
 </script>
 
@@ -346,7 +566,68 @@ onMounted(() => {
 
     <div class="space-y-6">
         <section class="rounded-[28px] border border-blue-100 bg-gradient-to-r from-blue-50 via-white to-sky-50 p-6 shadow-sm dark:border-blue-900/20 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950">
-          <div class="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px_220px_auto] lg:items-end">
+          <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div>
+              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Cách tạo template</label>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  v-for="option in cvTemplateModeOptions"
+                  :key="option.value"
+                  class="rounded-2xl border px-4 py-4 text-left transition"
+                  :class="templateMode === option.value
+                    ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-200 dark:bg-slate-100 dark:text-slate-900'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'"
+                  type="button"
+                  @click="templateMode = option.value"
+                >
+                  <p class="text-sm font-bold">{{ option.label }}</p>
+                  <p class="mt-1 text-xs leading-6" :class="templateMode === option.value ? 'text-white/80 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400'">
+                    {{ option.description }}
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            <div v-if="templateMode === 'style'">
+              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Nhóm phong cách</label>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <button
+                  v-for="option in cvStyleFamilyOptions"
+                  :key="option.value"
+                  class="rounded-2xl border px-4 py-4 text-left transition"
+                  :class="styleFamily === option.value
+                    ? 'border-blue-600 bg-blue-600 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'"
+                  type="button"
+                  @click="styleFamily = option.value"
+                >
+                  <p class="text-sm font-bold">{{ option.label }}</p>
+                  <p class="mt-1 text-xs leading-6" :class="styleFamily === option.value ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'">
+                    {{ option.description }}
+                  </p>
+                </button>
+              </div>
+            </div>
+
+            <div v-else>
+              <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Vị trí ứng tuyển mục tiêu</label>
+              <select
+                v-model="targetPosition"
+                class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+              >
+                <option value="">Chọn vị trí ứng tuyển</option>
+                <option
+                  v-for="option in cvTargetPositionOptions"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_220px_220px_auto] lg:items-end">
             <div>
               <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ngành nghề mục tiêu</label>
               <select
@@ -383,9 +664,9 @@ onMounted(() => {
 
             <button
               class="inline-flex h-[50px] items-center justify-center gap-2 rounded-2xl bg-[#2463eb] px-5 text-sm font-bold text-white transition hover:bg-blue-700"
-              :disabled="loadingIndustries || !selectedIndustryId"
+              :disabled="loadingIndustries || (templateMode === 'position' ? !targetPosition : !selectedIndustryId && !styleFamily)"
               type="button"
-              @click="applyIndustryPreset"
+              @click="applyTemplatePreset"
             >
               <span class="material-symbols-outlined text-[18px]">auto_fix_high</span>
               Áp preset
@@ -394,8 +675,8 @@ onMounted(() => {
 
           <div class="mt-4 rounded-2xl border border-blue-100 bg-white/90 p-4 text-sm leading-7 text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300">
             <p>
-              Chọn ngành nghề để hệ thống gợi ý template, tiêu đề CV, mục tiêu nghề nghiệp và một số kỹ năng nền phù hợp.
-              Bạn vẫn có thể đổi template thủ công theo sở thích ở phần preview.
+              Ở chế độ <span class="font-semibold">theo phong cách</span>, hệ thống gợi ý template dựa trên gu hiển thị và ngành nghề.
+              Ở chế độ <span class="font-semibold">theo vị trí ứng tuyển</span>, hệ thống gợi ý nội dung CV sát hơn với vai trò mục tiêu.
             </p>
           </div>
         </section>
@@ -456,6 +737,120 @@ onMounted(() => {
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Template đang dùng</label>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
                   {{ cvTemplateLabel(form.mau_cv) }}
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Chế độ template</label>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                  {{ cvTemplateModeOptions.find((item) => item.value === templateMode)?.label || 'Theo phong cách' }}
+                </div>
+              </div>
+
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Vị trí mục tiêu</label>
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
+                  {{ cvTargetPositionOptions.find((item) => item.value === targetPosition)?.label || form.vi_tri_ung_tuyen_muc_tieu || 'Chưa chọn' }}
+                </div>
+              </div>
+
+              <div class="md:col-span-2 rounded-3xl border border-slate-200 p-5 dark:border-slate-700">
+                <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200">Ảnh đại diện trên CV</label>
+                    <p class="mt-1 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                      Bạn có thể dùng ảnh đại diện hiện tại của tài khoản hoặc tải một ảnh riêng chỉ áp dụng cho CV này.
+                    </p>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-slate-100 text-lg font-bold text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      <img
+                        v-if="resolveProfileCvAvatarUrl(previewProfile, currentCandidate)"
+                        :src="resolveProfileCvAvatarUrl(previewProfile, currentCandidate)"
+                        alt="Ảnh CV"
+                        class="h-full w-full object-cover"
+                      />
+                      <span v-else>{{ String(currentCandidate?.ho_ten || 'U').trim().charAt(0).toUpperCase() }}</span>
+                    </div>
+                    <div class="text-xs leading-5 text-slate-500 dark:text-slate-400">
+                      <p class="font-semibold text-slate-700 dark:text-slate-200">
+                        {{ form.che_do_anh_cv === 'upload' ? 'Đang dùng ảnh riêng cho CV' : 'Đang dùng ảnh đại diện tài khoản' }}
+                      </p>
+                      <p v-if="form.che_do_anh_cv === 'upload' && !cvPhotoPreviewUrl">Chưa chọn ảnh mới cho CV này.</p>
+                      <p v-else-if="form.che_do_anh_cv === 'upload'">Ảnh này chỉ áp dụng cho hồ sơ CV hiện tại.</p>
+                      <p v-else>Ảnh lấy từ hồ sơ cá nhân hiện tại của bạn.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <button
+                    class="rounded-2xl border px-4 py-4 text-left transition"
+                    :class="form.che_do_anh_cv === 'profile'
+                      ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-200 dark:bg-slate-100 dark:text-slate-900'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'"
+                    type="button"
+                    @click="form.che_do_anh_cv = 'profile'"
+                  >
+                    <p class="text-sm font-bold">Dùng ảnh đại diện tài khoản</p>
+                    <p class="mt-1 text-xs leading-6" :class="form.che_do_anh_cv === 'profile' ? 'text-white/80 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400'">
+                      Phù hợp nếu bạn muốn đồng bộ ảnh hồ sơ cá nhân với tất cả CV hệ thống.
+                    </p>
+                  </button>
+
+                  <button
+                    class="rounded-2xl border px-4 py-4 text-left transition"
+                    :class="form.che_do_anh_cv === 'upload'
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200'"
+                    type="button"
+                    @click="form.che_do_anh_cv = 'upload'"
+                  >
+                    <p class="text-sm font-bold">Upload ảnh riêng cho CV</p>
+                    <p class="mt-1 text-xs leading-6" :class="form.che_do_anh_cv === 'upload' ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'">
+                      Dùng ảnh khác với avatar tài khoản nếu bạn muốn một phiên bản CV riêng biệt hơn.
+                    </p>
+                  </button>
+                </div>
+
+                <div v-if="form.che_do_anh_cv === 'upload'" class="mt-4 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950">
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                      <p class="font-semibold text-slate-700 dark:text-slate-200">Ảnh cho template CV</p>
+                      <p>Chấp nhận `jpg`, `png`, `webp`, tối đa 2MB. Nên dùng ảnh chân dung vuông hoặc gần vuông để hiển thị đẹp hơn.</p>
+                    </div>
+                    <label class="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-700">
+                      <span class="material-symbols-outlined text-[18px]">upload</span>
+                      Chọn ảnh
+                      <input
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        class="hidden"
+                        type="file"
+                        @change="handleCvPhotoChange"
+                      />
+                    </label>
+                  </div>
+
+                  <div v-if="cvPhotoPreviewUrl || form.anh_cv_url" class="mt-4 flex items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+                    <div class="flex items-center gap-4">
+                      <div class="h-20 w-20 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
+                        <img :src="cvPhotoPreviewUrl || form.anh_cv_url" alt="Preview ảnh CV" class="h-full w-full object-cover" />
+                      </div>
+                      <div class="text-sm leading-6 text-slate-500 dark:text-slate-400">
+                        <p class="font-semibold text-slate-700 dark:text-slate-200">
+                          {{ form.anh_cv?.name || (form.anh_cv_url ? 'Ảnh CV đã lưu' : 'Ảnh mới chưa lưu') }}
+                        </p>
+                        <p>{{ form.anh_cv ? 'Ảnh mới sẽ được lưu khi bấm tạo/cập nhật CV.' : 'Đang dùng ảnh riêng đã lưu cho hồ sơ này.' }}</p>
+                      </div>
+                    </div>
+                    <button
+                      class="rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50 dark:border-rose-900/40 dark:hover:bg-rose-900/10"
+                      type="button"
+                      @click="clearCvPhotoUpload"
+                    >
+                      Xóa ảnh riêng
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -626,7 +1021,7 @@ onMounted(() => {
               <div>
                 <h2 class="text-lg font-bold text-slate-900 dark:text-white">Template theo sở thích</h2>
                 <p class="mt-2 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
-                  Nếu không muốn theo template đề xuất của ngành, bạn có thể đổi thủ công tại đây. Preview sẽ mở riêng bằng nút để page nhập liệu rộng hơn.
+                  Chỉ hiển thị các template phù hợp với chế độ bạn đang chọn. Bạn có thể đổi thủ công sau khi áp preset.
                 </p>
               </div>
               <div class="flex flex-wrap gap-3">
@@ -651,22 +1046,83 @@ onMounted(() => {
 
             <div class="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
               <button
-                v-for="option in cvTemplateOptions"
+                v-for="option in availableTemplates"
                 :key="`template-${option.value}`"
-                class="rounded-2xl border px-4 py-4 text-left transition"
+                class="overflow-hidden rounded-2xl border text-left transition"
                 :class="form.mau_cv === option.value
                   ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-200 dark:bg-slate-100 dark:text-slate-900'
                   : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-slate-500'"
                 type="button"
                 @click="form.mau_cv = option.value"
               >
-                <p class="text-sm font-bold">{{ option.label }}</p>
-                <p
-                  class="mt-1 text-xs leading-6"
-                  :class="form.mau_cv === option.value ? 'text-white/80 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400'"
+                <div class="aspect-[4/5] overflow-hidden border-b"
+                  :class="form.mau_cv === option.value ? 'border-white/15 dark:border-slate-300/30' : 'border-slate-200 dark:border-slate-800'"
                 >
-                  {{ option.description }}
-                </p>
+                  <div class="relative h-full origin-top-left scale-[0.34] transform p-3 sm:scale-[0.4]">
+                    <div class="absolute left-6 top-6 z-10 flex flex-wrap gap-2">
+                      <span
+                        v-if="recommendedTemplate === option.value"
+                        class="rounded-full bg-emerald-600 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white shadow-sm"
+                      >
+                        Đề xuất cho bạn
+                      </span>
+                      <span
+                        v-for="badge in option.badges || []"
+                        :key="`${option.value}-${badge}`"
+                        class="rounded-full bg-slate-950/80 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white shadow-sm"
+                      >
+                        {{ badge }}
+                      </span>
+                    </div>
+                    <div class="min-h-[720px] min-w-[720px] overflow-hidden rounded-[22px] bg-white shadow-md">
+                      <ProfileCvPreview
+                        :profile="getTemplatePreviewProfile(option.value)"
+                        :owner="currentCandidate"
+                        compact
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="px-4 py-4">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <p class="text-sm font-bold">{{ option.label }}</p>
+                      <div class="mt-2 flex flex-wrap gap-2">
+                        <span
+                          v-if="recommendedTemplate === option.value"
+                          class="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-emerald-700"
+                          :class="form.mau_cv === option.value ? 'dark:border-emerald-300/40 dark:bg-emerald-100/70 dark:text-emerald-900' : ''"
+                        >
+                          Đề xuất cho bạn
+                        </span>
+                        <span
+                          v-for="badge in option.badges || []"
+                          :key="`${option.value}-${badge}-footer`"
+                          class="rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em]"
+                          :class="form.mau_cv === option.value
+                            ? 'border-white/20 text-white/90 dark:border-slate-400 dark:text-slate-900'
+                            : 'border-slate-200 text-slate-500 dark:border-slate-700 dark:text-slate-400'"
+                        >
+                          {{ badge }}
+                        </span>
+                      </div>
+                      <p
+                        class="mt-3 text-xs leading-6"
+                        :class="form.mau_cv === option.value ? 'text-white/80 dark:text-slate-700' : 'text-slate-500 dark:text-slate-400'"
+                      >
+                        {{ option.description }}
+                      </p>
+                    </div>
+                    <span
+                      class="mt-0.5 inline-flex h-6 min-w-6 items-center justify-center rounded-full border px-1.5 text-[11px] font-bold"
+                      :class="form.mau_cv === option.value
+                        ? 'border-white/20 text-white dark:border-slate-400 dark:text-slate-900'
+                        : 'border-slate-200 text-slate-400 dark:border-slate-700 dark:text-slate-500'"
+                    >
+                      {{ form.mau_cv === option.value ? 'Đang dùng' : 'Xem' }}
+                    </span>
+                  </div>
+                </div>
               </button>
             </div>
           </section>

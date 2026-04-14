@@ -147,10 +147,10 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
         $company = $this->congTyThanhViens()
             ->orderByRaw("
                 CASE
-                    WHEN cong_ty_nguoi_dungs.vai_tro_noi_bo = 'owner' THEN 0
+                    WHEN cong_ty_nguoi_dungs.vai_tro_noi_bo = ? THEN 0
                     ELSE 1
                 END
-            ")
+            ", [CongTy::VAI_TRO_NOI_BO_OWNER])
             ->first();
 
         return $company ?: $this->congTy()->first();
@@ -164,8 +164,39 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
 
         return $this->congTyThanhViens()
             ->where('cong_tys.id', $congTyId)
-            ->wherePivot('vai_tro_noi_bo', 'owner')
+            ->wherePivot('vai_tro_noi_bo', CongTy::VAI_TRO_NOI_BO_OWNER)
             ->exists();
+    }
+
+    public function layVaiTroNoiBoCongTy(?CongTy $congTy = null): ?string
+    {
+        $company = $congTy ?? $this->congTyHienTai();
+
+        if (!$company) {
+            return null;
+        }
+
+        $membership = $this->congTyThanhViens()
+            ->where('cong_tys.id', $company->id)
+            ->first();
+
+        if ($membership?->pivot?->vai_tro_noi_bo) {
+            return $membership->pivot->vai_tro_noi_bo;
+        }
+
+        if ($this->congTy()->whereKey($company->id)->exists()) {
+            return CongTy::VAI_TRO_NOI_BO_OWNER;
+        }
+
+        return null;
+    }
+
+    public function coVaiTroNoiBoCongTy(array|string $roles, ?CongTy $congTy = null): bool
+    {
+        $currentRole = $this->layVaiTroNoiBoCongTy($congTy);
+        $allowedRoles = is_array($roles) ? $roles : [$roles];
+
+        return $currentRole !== null && in_array($currentRole, $allowedRoles, true);
     }
 
     /**

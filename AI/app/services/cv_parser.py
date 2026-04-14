@@ -69,13 +69,20 @@ CERTIFICATION_SECTION_PATTERNS = (
 )
 
 
-def parse_cv(ho_so_id: int, file_path: str) -> dict:
-    logger.info("Parse CV for ho_so_id=%s file_path=%s", ho_so_id, file_path)
+def parse_cv(ho_so_id: int, file_path: str | None = None, raw_text: str | None = None) -> dict:
+    logger.info("Parse CV for ho_so_id=%s file_path=%s has_raw_text=%s", ho_so_id, file_path, bool(raw_text))
 
     try:
-        resolved_path = _resolve_cv_path(file_path)
-        raw_text = _extract_text(resolved_path)
-        normalized_text = _normalize_text(raw_text)
+        source_text = raw_text
+
+        if source_text:
+            normalized_text = _normalize_text(source_text)
+        else:
+            if not file_path:
+                raise ValueError("Thiếu dữ liệu CV để phân tích.")
+            resolved_path = _resolve_cv_path(file_path)
+            source_text = _extract_text(resolved_path)
+            normalized_text = _normalize_text(source_text)
 
         if not normalized_text:
             raise ValueError("Không thể trích xuất nội dung từ CV.")

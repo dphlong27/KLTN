@@ -803,10 +803,16 @@ export const employerCompanyService = {
       })
     })(),
 
-  addMember: (email) =>
+  addMember: (email, vaiTroNoiBo = 'recruiter') =>
     apiCall('/nha-tuyen-dung/cong-ty/thanh-viens', {
       method: 'POST',
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, vai_tro_noi_bo: vaiTroNoiBo }),
+    }),
+
+  updateMemberRole: (memberId, vaiTroNoiBo) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}/vai-tro`, {
+      method: 'PATCH',
+      body: JSON.stringify({ vai_tro_noi_bo: vaiTroNoiBo }),
     }),
 
   removeMember: (memberId) =>
@@ -822,6 +828,9 @@ export const employerJobService = {
     if (options.page) params.append('page', options.page)
     if (options.per_page) params.append('per_page', options.per_page)
     if (options.search) params.append('search', options.search)
+    if (options.hr_phu_trach_id !== undefined && options.hr_phu_trach_id !== null && options.hr_phu_trach_id !== '') {
+      params.append('hr_phu_trach_id', options.hr_phu_trach_id)
+    }
     if (options.trang_thai !== undefined && options.trang_thai !== null && options.trang_thai !== '' && options.trang_thai !== 'all') {
       params.append('trang_thai', options.trang_thai)
     }
@@ -897,6 +906,9 @@ export const employerApplicationService = {
     if (options.page) params.append('page', options.page)
     if (options.per_page) params.append('per_page', options.per_page)
     if (options.tin_tuyen_dung_id) params.append('tin_tuyen_dung_id', options.tin_tuyen_dung_id)
+    if (options.hr_phu_trach_id !== undefined && options.hr_phu_trach_id !== null && options.hr_phu_trach_id !== '') {
+      params.append('hr_phu_trach_id', options.hr_phu_trach_id)
+    }
     if (options.trang_thai !== undefined && options.trang_thai !== null && options.trang_thai !== '') {
       params.append('trang_thai', options.trang_thai)
     }

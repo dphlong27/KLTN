@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Api\Concerns\ResolvesEmployerCompany;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UngTuyen\CapNhatTrangThaiRequest;
+use App\Models\CongTy;
 use App\Models\UngTuyen;
 use App\Notifications\ApplicationStatusNotification;
 use App\Notifications\InterviewScheduledNotification;
@@ -14,6 +15,19 @@ use Illuminate\Http\Request;
 class NhaTuyenDungUngTuyenController extends Controller
 {
     use ResolvesEmployerCompany;
+
+    private function resolveValidHrPhuTrachId(?int $memberId, CongTy $congTy, int $fallbackUserId): int
+    {
+        if (!$memberId) {
+            return $fallbackUserId;
+        }
+
+        $exists = $congTy->thanhViens()
+            ->where('nguoi_dungs.id', $memberId)
+            ->exists();
+
+        return $exists ? $memberId : $fallbackUserId;
+    }
 
     private function isFinalStatus(UngTuyen $ungTuyen): bool
     {
@@ -90,14 +104,16 @@ class NhaTuyenDungUngTuyenController extends Controller
                 $q->select('id', 'tieu_de', 'hinh_thuc_lam_viec', 'trang_thai', 'so_luong_tuyen')
                     ->withCount([
                         'acceptedApplications as so_luong_da_nhan',
-                    ]);
+                    ])
+                    ->with('hrPhuTrach:id,ho_ten,email');
             },
             'hoSo' => function ($q) {
                 // Bao gồm hồ sơ đã xoá mềm 
                 $q->withTrashed()
                   ->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'muc_tieu_nghe_nghiep', 'file_cv')
                   ->with('nguoiDung:id,email'); // Chỉ lấy email
-            }
+            },
+            'hrPhuTrach:id,ho_ten,email',
         ]);
 
         // Lọc theo tin tuyển dụng cụ thể (VD chọn xem danh sách của chỉ 1 tin)
@@ -108,6 +124,14 @@ class NhaTuyenDungUngTuyenController extends Controller
         // Lọc theo trạng thái hồ sơ 
         if ($request->has('trang_thai') && $request->trang_thai !== '') {
             $query->where('trang_thai', $request->trang_thai);
+        }
+
+        if ($request->filled('hr_phu_trach_id')) {
+            $hrPhuTrachId = $request->input('hr_phu_trach_id') === 'me'
+                ? (int) auth()->id()
+                : (int) $request->input('hr_phu_trach_id');
+
+            $query->where('hr_phu_trach_id', $hrPhuTrachId);
         }
 
         $query->orderBy('thoi_gian_ung_tuyen', 'desc');
@@ -210,6 +234,16 @@ class NhaTuyenDungUngTuyenController extends Controller
             $dataUpdate['ghi_chu'] = $request->ghi_chu;
         }
 
+        if ($request->has('hr_phu_trach_id')) {
+            $dataUpdate['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                $request->hr_phu_trach_id ? (int) $request->hr_phu_trach_id : null,
+                $congTy,
+                (int) auth()->id(),
+            );
+        } elseif (empty($ungTuyen->hr_phu_trach_id)) {
+            $dataUpdate['hr_phu_trach_id'] = (int) auth()->id();
+        }
+
         $shouldNotifyInterview = $this->shouldSendInterviewNotification($ungTuyen, $dataUpdate);
         $shouldNotifyStatus = !$shouldNotifyInterview && $this->shouldSendStatusNotification($ungTuyen, $trangThaiMoi);
         $wasRescheduled = !is_null($ungTuyen->ngay_hen_phong_van);
@@ -262,8 +296,10 @@ class NhaTuyenDungUngTuyenController extends Controller
                     $q->select('id', 'tieu_de', 'hinh_thuc_lam_viec', 'trang_thai', 'so_luong_tuyen')
                         ->withCount([
                             'acceptedApplications as so_luong_da_nhan',
-                        ]);
+                        ])
+                        ->with('hrPhuTrach:id,ho_ten,email');
                 },
+                'hrPhuTrach:id,ho_ten,email',
             ])
         ]);
     }

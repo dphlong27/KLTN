@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Đăng ký middleware alias cho vai trò
         $middleware->alias([
             'role' => \App\Http\Middleware\KiemTraVaiTro::class,
+            'company_role' => \App\Http\Middleware\KiemTraVaiTroNoiBoCongTy::class,
         ]);
 
         $middleware->redirectGuestsTo(function (Request $request) {

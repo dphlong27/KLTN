@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { employerApplicationService, employerCandidateService, employerJobService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
 import { formatDateTimeVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
@@ -12,6 +13,7 @@ import {
 } from '@/utils/applicationStatus'
 
 const notify = useNotify()
+const { canProcessApplications, currentInternalRoleLabel, assignableMembers, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -28,9 +30,16 @@ const candidateDetail = ref(null)
 const filters = reactive({
   tin_tuyen_dung_id: '',
   trang_thai: '',
+  hr_phu_trach_id: '',
   per_page: 10,
   page: 1,
 })
+
+const hrFilterOptions = computed(() => ([
+  { id: '', label: 'Tất cả HR phụ trách' },
+  { id: 'me', label: 'Tôi phụ trách' },
+  ...assignableMembers.value,
+]))
 
 const form = reactive({
   trang_thai: 0,
@@ -39,6 +48,7 @@ const form = reactive({
   nguoi_phong_van: '',
   link_phong_van: '',
   ket_qua_phong_van: '',
+  hr_phu_trach_id: '',
   ghi_chu: '',
 })
 
@@ -215,6 +225,7 @@ const applyFilters = async () => {
 const resetFilters = async () => {
   filters.tin_tuyen_dung_id = ''
   filters.trang_thai = ''
+  filters.hr_phu_trach_id = ''
   filters.per_page = 10
   filters.page = 1
   await fetchApplications()
@@ -227,6 +238,11 @@ const goToPage = async (page) => {
 }
 
 const openModal = (application) => {
+  if (!canProcessApplications.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể cập nhật quy trình ứng tuyển.`)
+    return
+  }
+
   if (!canEmployerUpdateApplication(application)) {
     notify.info('Ứng viên đã rút đơn nên không thể cập nhật xử lý nữa.')
     return
@@ -239,6 +255,7 @@ const openModal = (application) => {
   form.nguoi_phong_van = application.nguoi_phong_van || ''
   form.link_phong_van = application.link_phong_van || ''
   form.ket_qua_phong_van = application.ket_qua_phong_van || ''
+  form.hr_phu_trach_id = application.hr_phu_trach?.id ? String(application.hr_phu_trach.id) : ''
   form.ghi_chu = application.ghi_chu || ''
   modalOpen.value = true
 }
@@ -252,6 +269,7 @@ const closeModal = () => {
   form.nguoi_phong_van = ''
   form.link_phong_van = ''
   form.ket_qua_phong_van = ''
+  form.hr_phu_trach_id = ''
   form.ghi_chu = ''
 }
 
@@ -327,6 +345,10 @@ const openCandidateDetail = async (application) => {
 
 const saveApplication = async () => {
   if (!selectedApplication.value) return
+  if (!canProcessApplications.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể cập nhật trạng thái ứng tuyển.`)
+    return
+  }
 
   saving.value = true
   try {
@@ -337,6 +359,7 @@ const saveApplication = async () => {
       nguoi_phong_van: form.nguoi_phong_van || null,
       link_phong_van: form.link_phong_van || null,
       ket_qua_phong_van: form.ket_qua_phong_van || null,
+      hr_phu_trach_id: form.hr_phu_trach_id ? Number(form.hr_phu_trach_id) : null,
       ghi_chu: form.ghi_chu || null,
     })
 
@@ -351,6 +374,11 @@ const saveApplication = async () => {
 }
 
 const resendInterviewEmail = async (application) => {
+  if (!canProcessApplications.value) {
+    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể gửi lại email lịch phỏng vấn.`)
+    return
+  }
+
   if (!canResendInterviewEmail(application)) {
     notify.info('Đơn này hiện không thể gửi lại email lịch phỏng vấn.')
     return
@@ -368,7 +396,7 @@ const resendInterviewEmail = async (application) => {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchJobs(), fetchApplications()])
+  await Promise.all([ensurePermissionsLoaded(), fetchJobs(), fetchApplications()])
 })
 </script>
 
@@ -391,6 +419,13 @@ onMounted(async () => {
       </button>
     </div>
 
+    <div
+      v-if="!canProcessApplications"
+      class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+    >
+      Bạn đang đăng nhập với vai trò <span class="font-bold">{{ currentInternalRoleLabel }}</span>. Màn này đang ở chế độ chỉ xem, các thao tác xử lý ứng tuyển và phỏng vấn đã bị khóa.
+    </div>
+
     <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
       <div
         v-for="card in stats"
@@ -411,7 +446,7 @@ onMounted(async () => {
     <div class="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.55fr)_360px]">
       <div class="space-y-6">
         <div class="rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900">
-          <div class="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_220px_170px_150px]">
+          <div class="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 dark:border-slate-800 lg:grid-cols-[minmax(0,1fr)_220px_220px_170px_150px]">
             <select
               v-model="filters.tin_tuyen_dung_id"
               class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
@@ -430,6 +465,16 @@ onMounted(async () => {
             >
               <option v-for="status in statusOptions" :key="String(status.value)" :value="status.value">
                 {{ status.label }}
+              </option>
+            </select>
+
+            <select
+              v-model="filters.hr_phu_trach_id"
+              class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-800/70 dark:text-white"
+              @change="applyFilters"
+            >
+              <option v-for="option in hrFilterOptions" :key="option.id || 'all-hr'" :value="option.id">
+                {{ option.label }}
               </option>
             </select>
 
@@ -507,7 +552,7 @@ onMounted(async () => {
                   <button
                     v-if="canResendInterviewEmail(application)"
                     class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
-                    :disabled="resendingEmailId === application.id"
+                    :disabled="resendingEmailId === application.id || !canProcessApplications"
                     type="button"
                     @click="resendInterviewEmail(application)"
                   >
@@ -532,7 +577,7 @@ onMounted(async () => {
                     :class="canEmployerUpdateApplication(application)
                       ? 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
                       : 'border-slate-200 text-slate-400 dark:border-slate-800 dark:text-slate-500'"
-                    :disabled="!canEmployerUpdateApplication(application)"
+                    :disabled="!canEmployerUpdateApplication(application) || !canProcessApplications"
                     type="button"
                     @click="openModal(application)"
                   >
@@ -572,6 +617,11 @@ onMounted(async () => {
               <div v-if="application.nguoi_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">Người phỏng vấn:</span>
                 <span class="ml-2 break-words">{{ application.nguoi_phong_van }}</span>
+              </div>
+
+              <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
+                <span class="font-semibold text-slate-900 dark:text-white">HR phụ trách:</span>
+                <span class="ml-2 break-words">{{ application.hr_phu_trach?.ho_ten || application.tin_tuyen_dung?.hr_phu_trach?.ho_ten || 'Chưa gán' }}</span>
               </div>
 
               <div
@@ -774,6 +824,19 @@ onMounted(async () => {
             >
           </div>
 
+          <div>
+            <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">HR phụ trách</label>
+            <select
+              v-model="form.hr_phu_trach_id"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+            >
+              <option value="">Tự gán theo người xử lý</option>
+              <option v-for="member in assignableMembers" :key="member.id" :value="String(member.id)">
+                {{ member.label }}
+              </option>
+            </select>
+          </div>
+
           <div class="md:col-span-2">
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link meeting / địa điểm</label>
             <input
@@ -808,7 +871,7 @@ onMounted(async () => {
           <button
             v-if="canResendInterviewEmail(selectedApplication)"
             class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-5 py-3 text-sm font-bold text-emerald-300 transition hover:bg-emerald-500/15 disabled:opacity-60"
-            :disabled="resendingEmailId === selectedApplication?.id"
+            :disabled="resendingEmailId === selectedApplication?.id || !canProcessApplications"
             type="button"
             @click="resendInterviewEmail(selectedApplication)"
           >
@@ -823,7 +886,7 @@ onMounted(async () => {
           </button>
           <button
             class="inline-flex min-w-[150px] items-center justify-center gap-2 rounded-2xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition hover:-translate-y-0.5 disabled:opacity-60"
-            :disabled="saving"
+            :disabled="saving || !canProcessApplications"
             type="button"
             @click="saveApplication"
           >

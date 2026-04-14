@@ -2,22 +2,28 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { employerCompanyService, employerJobService, jobService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
-import { connectPublicChannel, leaveRealtimeChannel } from '@/services/realtime'
+import { connectPublicChannel, connectPrivateChannel, leaveRealtimeChannel } from '@/services/realtime'
 import { getStoredEmployer } from '@/utils/authStorage'
 
 const notify = useNotify()
 
 const loading = ref(false)
 const saving = ref(false)
+const memberSubmitting = ref(false)
+const roleUpdatingIds = ref([])
 const company = ref(null)
 const industries = ref([])
 const logoPreview = ref('')
 const selectedLogoFile = ref(null)
+const memberEmail = ref('')
+const memberRole = ref('recruiter')
+const removingMemberIds = ref([])
 const stats = ref({
   totalJobs: 0,
   activeJobs: 0,
 })
 let followerChannelName = null
+let publicFollowerChannelName = null
 
 const form = reactive({
   ten_cong_ty: '',
@@ -33,6 +39,15 @@ const form = reactive({
 })
 
 const hasCompany = computed(() => Boolean(company.value?.id))
+const companyMembers = computed(() => Array.isArray(company.value?.thanh_viens) ? company.value.thanh_viens : [])
+const isCompanyOwner = computed(() => Boolean(company.value?.la_chu_so_huu))
+const companyPermissions = computed(() => company.value?.quyen_noi_bo || {})
+const canManageCompanyProfile = computed(() => Boolean(companyPermissions.value?.co_the_quan_ly_cong_ty) || !hasCompany.value)
+const canManageMembers = computed(() => Boolean(companyPermissions.value?.co_the_quan_ly_thanh_vien))
+const totalHr = computed(() => Number(company.value?.tong_so_hr || companyMembers.value.length || 0))
+const internalRoleOptions = computed(() =>
+  Object.entries(company.value?.vai_tro_noi_bo_options || {}).filter(([role]) => role !== 'owner'),
+)
 
 const completionPercent = computed(() => {
   const fields = [
@@ -75,6 +90,12 @@ const quickBenefits = computed(() => {
     result.push('Bổ sung mô tả công ty, website và quy mô để hồ sơ doanh nghiệp thuyết phục hơn.')
   }
   return result.slice(0, 4)
+})
+
+const ownerSummary = computed(() => {
+  if (!hasCompany.value) return 'Tạo công ty trước khi quản lý thành viên HR nội bộ.'
+  if (canManageMembers.value) return 'Bạn đang là owner của công ty và có thể thêm hoặc gỡ HR nội bộ.'
+  return `Bạn đang đăng nhập với vai trò ${company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR Member'}. Chỉ owner mới có thể quản lý thành viên nội bộ.`
 })
 
 const resetForm = () => {
@@ -179,9 +200,10 @@ const fetchStats = async () => {
 const subscribeFollowerChannel = (companyId) => {
   if (!companyId) return
 
-  followerChannelName = `company.public.${companyId}`
+  followerChannelName = `company.${companyId}`
+  publicFollowerChannelName = `company.public.${companyId}`
 
-  connectPublicChannel(followerChannelName)?.listen('.company.followers.updated', (payload) => {
+  const applyFollowerPayload = (payload) => {
     const followerCount = Number(payload?.follower_count)
 
     if (!Number.isFinite(followerCount)) return
@@ -192,10 +214,18 @@ const subscribeFollowerChannel = (companyId) => {
           so_nguoi_theo_doi: followerCount,
         }
       : company.value
-  })
+  }
+
+  connectPrivateChannel(followerChannelName)?.listen('.company.followers.updated', applyFollowerPayload)
+  connectPublicChannel(publicFollowerChannelName)?.listen('.company.followers.updated', applyFollowerPayload)
 }
 
 const saveCompany = async () => {
+  if (!canManageCompanyProfile.value) {
+    notify.warning('Vai trò nội bộ hiện tại không có quyền cập nhật thông tin công ty.')
+    return
+  }
+
   if (!form.ten_cong_ty.trim() || !form.ma_so_thue.trim()) {
     notify.warning('Vui lòng nhập tối thiểu tên công ty và mã số thuế.')
     return
@@ -252,6 +282,106 @@ const restoreFromServer = async () => {
   notify.info('Đã tải lại dữ liệu công ty từ hệ thống.')
 }
 
+const addHrMember = async () => {
+  if (!hasCompany.value) {
+    notify.warning('Hãy tạo thông tin công ty trước khi thêm HR.')
+    return
+  }
+
+  if (!canManageMembers.value) {
+    notify.warning('Chỉ owner mới có thể thêm HR vào công ty.')
+    return
+  }
+
+  const email = String(memberEmail.value || '').trim()
+  if (!email) {
+    notify.warning('Vui lòng nhập email tài khoản HR cần thêm.')
+    return
+  }
+
+  memberSubmitting.value = true
+  try {
+    const response = await employerCompanyService.addMember(email, memberRole.value)
+    const nextCompany = response?.data?.cong_ty || response?.data?.data?.cong_ty || null
+
+    if (nextCompany) {
+      company.value = nextCompany
+      fillForm(nextCompany)
+    } else {
+      await fetchCompany()
+    }
+
+    memberEmail.value = ''
+    memberRole.value = 'recruiter'
+    notify.success('Đã thêm HR vào công ty.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể thêm HR vào công ty.')
+  } finally {
+    memberSubmitting.value = false
+  }
+}
+
+const updateHrMemberRole = async (member, nextRole) => {
+  const memberId = Number(member?.id || 0)
+  const normalizedRole = String(nextRole || '').trim()
+
+  if (!memberId || !normalizedRole || member.la_chu_so_huu) return
+  if (normalizedRole === member.vai_tro_noi_bo) return
+
+  if (!canManageMembers.value) {
+    notify.warning('Chỉ owner mới có thể cập nhật vai trò HR.')
+    return
+  }
+
+  roleUpdatingIds.value = [...roleUpdatingIds.value, memberId]
+  try {
+    const response = await employerCompanyService.updateMemberRole(memberId, normalizedRole)
+    const nextCompany = response?.data?.cong_ty || response?.data?.data?.cong_ty || null
+
+    if (nextCompany) {
+      company.value = nextCompany
+      fillForm(nextCompany)
+    } else {
+      await fetchCompany()
+    }
+
+    notify.success('Đã cập nhật vai trò nội bộ.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể cập nhật vai trò nội bộ.')
+  } finally {
+    roleUpdatingIds.value = roleUpdatingIds.value.filter((id) => id !== memberId)
+  }
+}
+
+const removeHrMember = async (member) => {
+  const memberId = Number(member?.id || 0)
+  if (!memberId) return
+
+  if (!canManageMembers.value) {
+    notify.warning('Chỉ owner mới có thể gỡ HR khỏi công ty.')
+    return
+  }
+
+  removingMemberIds.value = [...removingMemberIds.value, memberId]
+  try {
+    const response = await employerCompanyService.removeMember(memberId)
+    const nextCompany = response?.data?.cong_ty || response?.data?.data?.cong_ty || null
+
+    if (nextCompany) {
+      company.value = nextCompany
+      fillForm(nextCompany)
+    } else {
+      await fetchCompany()
+    }
+
+    notify.success('Đã gỡ HR khỏi công ty.')
+  } catch (error) {
+    notify.apiError(error, 'Không thể gỡ HR khỏi công ty.')
+  } finally {
+    removingMemberIds.value = removingMemberIds.value.filter((id) => id !== memberId)
+  }
+}
+
 onMounted(async () => {
   await Promise.all([fetchIndustries(), fetchCompany(), fetchStats()])
 })
@@ -260,10 +390,12 @@ watch(
   () => company.value?.id,
   (nextCompanyId, previousCompanyId) => {
     if (previousCompanyId) {
+      leaveRealtimeChannel(`company.${previousCompanyId}`)
       leaveRealtimeChannel(`company.public.${previousCompanyId}`)
     }
 
     followerChannelName = null
+    publicFollowerChannelName = null
 
     if (nextCompanyId) {
       subscribeFollowerChannel(nextCompanyId)
@@ -274,6 +406,10 @@ watch(
 onUnmounted(() => {
   if (followerChannelName) {
     leaveRealtimeChannel(followerChannelName)
+  }
+
+  if (publicFollowerChannelName) {
+    leaveRealtimeChannel(publicFollowerChannelName)
   }
 })
 </script>
@@ -295,7 +431,7 @@ onUnmounted(() => {
         </button>
         <button
           class="flex items-center gap-2 rounded-lg bg-[#2463eb] px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition-all hover:bg-[#2463eb]/90 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="saving || loading"
+              :disabled="saving || loading || !canManageCompanyProfile"
           type="button"
           @click="saveCompany"
         >
@@ -359,6 +495,10 @@ onUnmounted(() => {
             <div class="flex items-center justify-between">
               <span class="text-sm text-slate-500">Số người follow</span>
               <span class="font-bold">{{ company?.so_nguoi_theo_doi || 0 }}</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-slate-500">Nhân sự HR nội bộ</span>
+              <span class="font-bold">{{ totalHr }}</span>
             </div>
             <div class="flex items-center justify-between">
               <span class="text-sm text-slate-500">Ngành nghề</span>
@@ -470,13 +610,126 @@ onUnmounted(() => {
           </div>
         </section>
 
+        <section class="rounded-xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div class="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 class="flex items-center gap-2 text-lg font-bold">
+                <span class="material-symbols-outlined text-[#2463eb]">groups</span> Thành viên HR nội bộ
+              </h3>
+              <p class="mt-1 text-sm text-slate-500">{{ ownerSummary }}</p>
+            </div>
+            <span
+              class="inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-xs font-bold"
+              :class="isCompanyOwner ? 'bg-[#2463eb]/10 text-[#2463eb]' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'"
+            >
+              <span class="size-2 rounded-full" :class="isCompanyOwner ? 'bg-[#2463eb]' : 'bg-slate-400'" />
+              {{ isCompanyOwner ? 'Owner' : 'Member' }}
+            </span>
+          </div>
+
+          <div v-if="hasCompany && canManageMembers" class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+            <label class="mb-2 block text-sm font-semibold text-slate-600 dark:text-slate-300">Thêm HR bằng email tài khoản nhà tuyển dụng</label>
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto]">
+              <input
+                v-model="memberEmail"
+                class="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 transition-all focus:border-transparent focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-900"
+                type="email"
+                placeholder="hr@company.com"
+                @keydown.enter.prevent="addHrMember"
+              >
+              <select
+                v-model="memberRole"
+                class="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 transition-all focus:border-transparent focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-900"
+              >
+                <option v-for="[role, label] in internalRoleOptions" :key="role" :value="role">
+                  {{ label }}
+                </option>
+              </select>
+              <button
+                class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg bg-[#2463eb] px-5 py-2.5 text-sm font-bold text-white transition-all hover:bg-[#2463eb]/90 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="memberSubmitting"
+                type="button"
+                @click="addHrMember"
+              >
+                <span class="material-symbols-outlined text-lg">person_add</span>
+                {{ memberSubmitting ? 'Đang thêm...' : 'Thêm HR' }}
+              </button>
+            </div>
+          </div>
+
+          <div v-if="!hasCompany" class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+            Bạn cần tạo công ty trước khi thêm và quản lý thành viên HR.
+          </div>
+
+          <div v-else-if="companyMembers.length" class="space-y-4">
+            <div
+              v-for="member in companyMembers"
+              :key="member.id"
+              class="flex flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950/30 lg:flex-row lg:items-center lg:justify-between"
+            >
+              <div class="flex items-center gap-4">
+                <div class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 text-lg font-bold text-[#2463eb] dark:border-slate-700 dark:bg-slate-800">
+                  <img
+                    v-if="member.avatar_url"
+                    :src="member.avatar_url"
+                    alt="avatar HR"
+                    class="h-full w-full object-cover"
+                  >
+                  <span v-else>{{ String(member.ho_ten || 'H').trim().charAt(0).toUpperCase() }}</span>
+                </div>
+                <div>
+                  <p class="font-bold text-slate-900 dark:text-white">{{ member.ho_ten }}</p>
+                  <p class="text-sm text-slate-500">{{ member.email }}</p>
+                  <p class="text-sm text-slate-500">{{ member.so_dien_thoai || 'Chưa cập nhật số điện thoại' }}</p>
+                  <p class="mt-1 text-xs font-medium text-slate-400">Vai trò nội bộ: {{ member.ten_vai_tro_noi_bo || 'HR Member' }}</p>
+                </div>
+              </div>
+
+              <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+                <span
+                  class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold"
+                  :class="member.la_chu_so_huu ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'"
+                >
+                  <span class="material-symbols-outlined text-sm">{{ member.la_chu_so_huu ? 'workspace_premium' : 'badge' }}</span>
+                  {{ member.la_chu_so_huu ? 'Owner' : (member.ten_vai_tro_noi_bo || 'HR Member') }}
+                </span>
+                <select
+                  v-if="canManageMembers && !member.la_chu_so_huu"
+                  :value="member.vai_tro_noi_bo || 'recruiter'"
+                  class="min-w-[180px] rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium transition-all focus:border-transparent focus:ring-2 focus:ring-[#2463eb] dark:border-slate-700 dark:bg-slate-900"
+                  :disabled="roleUpdatingIds.includes(member.id)"
+                  @change="updateHrMemberRole(member, $event.target.value)"
+                >
+                  <option v-for="[role, label] in internalRoleOptions" :key="role" :value="role">
+                    {{ label }}
+                  </option>
+                </select>
+                <button
+                  v-if="canManageMembers && !member.la_chu_so_huu"
+                  class="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/10"
+                  :disabled="removingMemberIds.includes(member.id) || roleUpdatingIds.includes(member.id)"
+                  type="button"
+                  @click="removeHrMember(member)"
+                >
+                  <span class="material-symbols-outlined text-[18px]">person_remove</span>
+                  {{ removingMemberIds.includes(member.id) ? 'Đang gỡ...' : 'Gỡ HR' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-400">
+            Công ty hiện chưa có thêm HR nội bộ nào ngoài tài khoản sở hữu.
+          </div>
+        </section>
+
         <div class="flex justify-end gap-4 pb-8">
           <button class="rounded-lg border border-slate-300 px-8 py-3 font-bold transition-colors hover:bg-slate-100 dark:border-slate-700 dark:hover:bg-slate-800" type="button" @click="restoreFromServer">
             Hủy thay đổi
           </button>
           <button
             class="rounded-lg bg-[#2463eb] px-8 py-3 font-bold text-white transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60"
-            :disabled="saving"
+            :disabled="saving || !canManageCompanyProfile"
             type="button"
             @click="saveCompany"
           >

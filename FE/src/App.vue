@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import GuestWrapper from '@/layouts/wrapper/GuestLayout.vue'
 import AuthWrapper from '@/layouts/wrapper/AuthLayout.vue'
 import DashboardWrapper from '@/layouts/wrapper/DashboardLayout.vue'
+import CvBuilderWrapper from '@/layouts/wrapper/CvBuilderLayout.vue'
 import AdminWrapper from '@/layouts/wrapper/AdminLayout.vue'
 import EmployerWrapper from '@/layouts/wrapper/EmployerLayout.vue'
 import { authService } from '@/services/api'
@@ -19,6 +20,7 @@ const layoutComponent = computed(() => {
   switch (layout) {
     case 'auth': return AuthWrapper
     case 'dashboard': return DashboardWrapper
+    case 'cv-builder': return CvBuilderWrapper
     case 'admin': return AdminWrapper
     case 'employer': return EmployerWrapper
     default: return GuestWrapper

@@ -2,9 +2,11 @@
 import { computed } from 'vue'
 import {
   cvSkillLevelLabel,
-  cvTemplateLabel,
+  cvSkillLevelPercent,
   formatCvPeriod,
   getCvTemplateTheme,
+  resolveProfileCvAvatarUrl,
+  resolveCvTemplateValue,
 } from '@/utils/profileCvBuilder'
 
 const props = defineProps({
@@ -32,367 +34,307 @@ const degreeOptions = {
   khac: 'Khác',
 }
 
-const theme = computed(() => getCvTemplateTheme(props.profile?.mau_cv || 'classic'))
-const template = computed(() => props.profile?.mau_cv || 'classic')
-
+const template = computed(() => resolveCvTemplateValue(props.profile?.mau_cv || 'executive_navy'))
+const theme = computed(() => getCvTemplateTheme(template.value))
 const fullName = computed(() => props.owner?.ho_ten || 'Ứng viên')
 const email = computed(() => props.owner?.email || 'Chưa cập nhật email')
 const phone = computed(() => props.owner?.so_dien_thoai || 'Chưa cập nhật số điện thoại')
+const avatarUrl = computed(() => resolveProfileCvAvatarUrl(props.profile, props.owner))
+const avatarInitials = computed(() =>
+  String(fullName.value || 'U')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toUpperCase())
+    .join(''),
+)
 const title = computed(() => props.profile?.tieu_de_ho_so || 'Hồ sơ ứng tuyển trên hệ thống')
 const objective = computed(() => props.profile?.muc_tieu_nghe_nghiep || 'Chưa cập nhật mục tiêu nghề nghiệp.')
 const summary = computed(() => props.profile?.mo_ta_ban_than || 'Chưa cập nhật mô tả bản thân.')
 const degreeLabel = computed(() => degreeOptions[props.profile?.trinh_do] || 'Chưa cập nhật')
 const years = computed(() => `${props.profile?.kinh_nghiem_nam || 0} năm`)
+const targetPosition = computed(() => props.profile?.vi_tri_ung_tuyen_muc_tieu || 'Đa vị trí')
+const targetIndustry = computed(() => props.profile?.ten_nganh_nghe_muc_tieu || 'Đang cập nhật')
 const skills = computed(() => Array.isArray(props.profile?.ky_nang_json) ? props.profile.ky_nang_json.filter((item) => item?.ten) : [])
 const experiences = computed(() => Array.isArray(props.profile?.kinh_nghiem_json) ? props.profile.kinh_nghiem_json.filter((item) => item?.vi_tri) : [])
 const educations = computed(() => Array.isArray(props.profile?.hoc_van_json) ? props.profile.hoc_van_json.filter((item) => item?.truong) : [])
 const projects = computed(() => Array.isArray(props.profile?.du_an_json) ? props.profile.du_an_json.filter((item) => item?.ten) : [])
 const certificates = computed(() => Array.isArray(props.profile?.chung_chi_json) ? props.profile.chung_chi_json.filter((item) => item?.ten) : [])
 
-const primaryCards = computed(() => [
-  { label: 'Trình độ', value: degreeLabel.value },
-  { label: 'Kinh nghiệm', value: years.value },
-  { label: 'Template', value: cvTemplateLabel(template.value) },
-])
+const limitedExperiences = computed(() => experiences.value.slice(0, props.compact ? 2 : 4))
+const limitedProjects = computed(() => projects.value.slice(0, props.compact ? 2 : 3))
+const limitedCertificates = computed(() => certificates.value.slice(0, props.compact ? 2 : 3))
 </script>
 
 <template>
-  <div class="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm" :style="{ color: theme.text }">
-    <template v-if="template === 'classic'">
-      <div class="px-6 py-6 text-white" :style="{ background: theme.hero }">
-        <h3 class="text-3xl font-black">{{ fullName }}</h3>
-        <p class="mt-2 text-sm font-medium opacity-90">{{ title }}</p>
-        <div class="mt-4 flex flex-wrap gap-2 text-xs font-semibold">
-          <span class="rounded-full px-3 py-1.5" :style="{ backgroundColor: 'rgba(255,255,255,0.18)' }">{{ email }}</span>
-          <span class="rounded-full px-3 py-1.5" :style="{ backgroundColor: 'rgba(255,255,255,0.18)' }">{{ phone }}</span>
+  <div class="overflow-hidden bg-white shadow-sm" :style="{ color: theme.text }">
+    <template v-if="template === 'executive_navy'">
+      <div class="bg-[#2f3557] px-6 py-7 text-center text-[#d7bd79] md:px-10">
+        <h3 class="text-3xl font-medium uppercase tracking-[0.22em] md:text-4xl">{{ fullName }}</h3>
+        <div class="mx-auto mt-4 h-[2px] w-40 bg-[#d7bd79] relative">
+          <span class="absolute left-1/2 top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border-2 border-[#d7bd79] bg-[#2f3557]" />
         </div>
+        <p class="mt-4 text-xs font-semibold uppercase tracking-[0.3em] md:text-sm">{{ title }}</p>
       </div>
-      <div class="grid grid-cols-1 gap-4 p-5 lg:grid-cols-2">
-        <div class="rounded-3xl border p-4 lg:col-span-2" :style="{ borderColor: theme.accentSoft, backgroundColor: theme.panel }">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Mục tiêu nghề nghiệp</p>
-          <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ objective }}</p>
-        </div>
-        <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Giới thiệu</p>
-          <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ summary }}</p>
-        </div>
-        <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Tóm tắt hồ sơ</p>
-          <div class="mt-3 space-y-2 text-sm">
-            <p v-for="card in primaryCards" :key="card.label">{{ card.label }}: <span class="font-semibold">{{ card.value }}</span></p>
-          </div>
-        </div>
-        <div class="rounded-3xl border p-4 lg:col-span-2" :style="{ borderColor: theme.accentSoft }">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kỹ năng</p>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <span v-for="(item, index) in skills" :key="`classic-skill-${index}`" class="rounded-full px-3 py-1.5 text-xs font-semibold" :style="{ backgroundColor: theme.panel, color: theme.accent }">
-              {{ item.ten }}<span v-if="item.muc_do"> • {{ cvSkillLevelLabel(item.muc_do) }}</span>
-            </span>
-            <span v-if="!skills.length" class="text-sm text-slate-500">Chưa có kỹ năng nào được thêm.</span>
-          </div>
-        </div>
-        <div class="rounded-3xl border p-4 lg:col-span-2" :style="{ borderColor: theme.accentSoft }">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kinh nghiệm nổi bật</p>
-          <div v-if="experiences.length" class="mt-3 space-y-3">
-            <div v-for="(item, index) in experiences.slice(0, compact ? 2 : 3)" :key="`classic-exp-${index}`" class="rounded-2xl p-4" :style="{ backgroundColor: theme.panel }">
-              <div class="flex flex-col gap-2 md:flex-row md:justify-between">
-                <div>
-                  <p class="text-sm font-bold">{{ item.vi_tri }}</p>
-                  <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
-                </div>
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
-              </div>
-              <p v-if="item.mo_ta" class="mt-3 text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
-            </div>
-          </div>
-          <p v-else class="mt-3 text-sm text-slate-500">Chưa có kinh nghiệm nào được thêm.</p>
-        </div>
-      </div>
-    </template>
 
-    <template v-else-if="template === 'minimal'">
-      <div class="border-b border-slate-200 px-6 py-6">
-        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h3 class="text-3xl font-black">{{ fullName }}</h3>
-            <p class="mt-2 text-sm font-semibold" :style="{ color: theme.accent }">{{ title }}</p>
-          </div>
-          <div class="space-y-1 text-sm text-slate-500">
-            <p>{{ email }}</p>
-            <p>{{ phone }}</p>
-          </div>
-        </div>
-      </div>
-      <div class="space-y-6 p-6">
-        <section class="border-l-4 pl-4" :style="{ borderColor: theme.accent }">
-          <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Mục tiêu nghề nghiệp</p>
-          <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ objective }}</p>
-        </section>
-        <section class="grid grid-cols-1 gap-5 lg:grid-cols-[240px_minmax(0,1fr)]">
-          <div class="space-y-5">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Tóm tắt</p>
-              <div class="mt-3 space-y-2 text-sm">
-                <p v-for="card in primaryCards" :key="card.label">{{ card.label }}: <span class="font-semibold">{{ card.value }}</span></p>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kỹ năng</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <span v-for="(item, index) in skills" :key="`minimal-skill-${index}`" class="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700">
-                  {{ item.ten }}
-                </span>
-              </div>
-            </div>
-          </div>
-          <div class="space-y-5">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Giới thiệu</p>
-              <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ summary }}</p>
-            </div>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kinh nghiệm</p>
-              <div v-if="experiences.length" class="mt-3 space-y-4">
-                <div v-for="(item, index) in experiences.slice(0, compact ? 2 : 3)" :key="`minimal-exp-${index}`" class="border-t border-slate-200 pt-4 first:border-0 first:pt-0">
-                  <div class="flex flex-col gap-1">
-                    <p class="text-sm font-bold">{{ item.vi_tri }}</p>
-                    <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
-                  </div>
-                  <p v-if="item.mo_ta" class="mt-2 text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </template>
-
-    <template v-else-if="template === 'executive'">
-      <div class="grid grid-cols-1 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div class="px-6 py-6 text-white" :style="{ background: theme.hero }">
-          <h3 class="text-3xl font-black">{{ fullName }}</h3>
-          <p class="mt-2 text-sm font-semibold opacity-90">{{ title }}</p>
-          <div class="mt-6 space-y-4">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Liên hệ</p>
-              <div class="mt-2 space-y-2 text-sm">
-                <p>{{ email }}</p>
-                <p>{{ phone }}</p>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Hồ sơ</p>
-              <div class="mt-2 space-y-2 text-sm">
-                <p v-for="card in primaryCards" :key="card.label">{{ card.label }}: {{ card.value }}</p>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Kỹ năng chính</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <span v-for="(item, index) in skills.slice(0, compact ? 5 : 8)" :key="`executive-skill-${index}`" class="rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold">
-                  {{ item.ten }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="space-y-5 p-6">
-          <section class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft, backgroundColor: theme.panel }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Giới thiệu tổng quan</p>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ summary }}</p>
-          </section>
-          <section class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Mục tiêu nghề nghiệp</p>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ objective }}</p>
-          </section>
-          <section class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kinh nghiệm quản trị / chuyên môn</p>
-            <div v-if="experiences.length" class="mt-3 space-y-4">
-              <div v-for="(item, index) in experiences.slice(0, compact ? 2 : 4)" :key="`executive-exp-${index}`" class="border-t border-slate-200 pt-4 first:border-0 first:pt-0">
-                <div class="flex flex-col gap-2 md:flex-row md:justify-between">
-                  <div>
-                    <p class="text-sm font-bold">{{ item.vi_tri }}</p>
-                    <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
-                  </div>
-                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
-                </div>
-                <p v-if="item.mo_ta" class="mt-2 text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
-              </div>
-            </div>
-          </section>
-        </div>
-      </div>
-    </template>
-
-    <template v-else-if="template === 'modern'">
-      <div class="grid grid-cols-1 gap-0 lg:grid-cols-[minmax(0,1fr)_220px]">
-        <div>
-          <div class="px-6 py-6 text-white" :style="{ background: theme.hero }">
-            <h3 class="text-3xl font-black">{{ fullName }}</h3>
-            <p class="mt-2 text-sm font-medium opacity-90">{{ title }}</p>
-            <p class="mt-4 max-w-2xl whitespace-pre-wrap text-sm leading-7 text-white/85">{{ summary }}</p>
-          </div>
-          <div class="grid grid-cols-1 gap-4 p-5">
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-              <div v-for="card in primaryCards" :key="card.label" class="rounded-3xl p-4" :style="{ backgroundColor: theme.panel }">
-                <p class="text-xs font-semibold uppercase tracking-[0.2em]" :style="{ color: theme.accent }">{{ card.label }}</p>
-                <p class="mt-2 text-sm font-bold">{{ card.value }}</p>
-              </div>
-            </div>
-            <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Mục tiêu nghề nghiệp</p>
-              <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ objective }}</p>
-            </div>
-            <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kinh nghiệm nổi bật</p>
-              <div v-if="experiences.length" class="mt-3 grid grid-cols-1 gap-3">
-                <div v-for="(item, index) in experiences.slice(0, compact ? 2 : 3)" :key="`modern-exp-${index}`" class="rounded-2xl p-4" :style="{ backgroundColor: theme.panel }">
-                  <div class="flex flex-col gap-2 md:flex-row md:justify-between">
-                    <div>
-                      <p class="text-sm font-bold">{{ item.vi_tri }}</p>
-                      <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
-                    </div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
-                  </div>
-                  <p v-if="item.mo_ta" class="mt-2 text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="border-t border-slate-200 p-5 lg:border-l lg:border-t-0">
-          <div class="space-y-5">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Liên hệ</p>
-              <div class="mt-3 space-y-2 text-sm text-slate-600">
-                <p>{{ email }}</p>
-                <p>{{ phone }}</p>
-              </div>
-            </div>
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kỹ năng</p>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <span v-for="(item, index) in skills" :key="`modern-skill-${index}`" class="rounded-full px-3 py-1.5 text-xs font-semibold" :style="{ backgroundColor: theme.panel, color: theme.accent }">
-                  {{ item.ten }}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </template>
-
-    <template v-else-if="template === 'creative'">
-      <div class="grid grid-cols-1 lg:grid-cols-[320px_minmax(0,1fr)]">
-        <div class="p-6 text-white" :style="{ background: theme.hero }">
-          <div class="rounded-[28px] bg-white/10 p-5 backdrop-blur">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Creative CV</p>
-            <h3 class="mt-3 text-3xl font-black">{{ fullName }}</h3>
-            <p class="mt-2 text-sm font-semibold opacity-90">{{ title }}</p>
-            <div class="mt-5 space-y-2 text-sm">
-              <p>{{ email }}</p>
+      <div class="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
+        <aside class="border-r border-slate-200 px-6 py-6">
+          <section class="mb-6">
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Liên lạc</h4>
+            <div class="mt-3 h-px bg-slate-200" />
+            <div class="mt-3 space-y-2 text-sm leading-6">
               <p>{{ phone }}</p>
+              <p>{{ email }}</p>
+              <p>{{ targetPosition }}</p>
+              <p>{{ targetIndustry }}</p>
             </div>
-          </div>
-          <div class="mt-5 rounded-[28px] bg-white/10 p-5 backdrop-blur">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-white/70">Kỹ năng mũi nhọn</p>
+          </section>
+
+          <section class="mb-6">
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Học vấn</h4>
+            <div class="mt-3 h-px bg-slate-200" />
+            <div v-if="educations.length" class="mt-3 space-y-4">
+              <div v-for="(item, index) in educations" :key="`edu-navy-${index}`" class="text-sm leading-6">
+                <p class="font-bold">{{ item.truong }}</p>
+                <p>{{ item.chuyen_nganh || degreeLabel }}</p>
+                <p class="text-slate-500">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+              </div>
+            </div>
+            <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật học vấn.</p>
+          </section>
+
+          <section class="mb-6">
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Kỹ năng</h4>
+            <div class="mt-3 h-px bg-slate-200" />
             <div class="mt-3 flex flex-wrap gap-2">
-              <span v-for="(item, index) in skills.slice(0, compact ? 6 : 9)" :key="`creative-skill-${index}`" class="rounded-full bg-white/15 px-3 py-1.5 text-xs font-semibold">
+              <span
+                v-for="(item, index) in skills"
+                :key="`skill-navy-${index}`"
+                class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700"
+              >
                 {{ item.ten }}
               </span>
             </div>
-          </div>
-        </div>
-        <div class="space-y-5 p-6">
-          <section class="rounded-[28px] p-5" :style="{ backgroundColor: theme.panel }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Mục tiêu nghề nghiệp</p>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ objective }}</p>
+            <p v-if="!skills.length" class="mt-3 text-sm text-slate-500">Chưa cập nhật kỹ năng.</p>
           </section>
-          <section class="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Tóm tắt</p>
-              <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ summary }}</p>
-            </div>
-            <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-              <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Thông tin nhanh</p>
-              <div class="mt-3 space-y-2 text-sm">
-                <p v-for="card in primaryCards" :key="card.label">{{ card.label }}: <span class="font-semibold">{{ card.value }}</span></p>
+
+          <section>
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Chứng chỉ</h4>
+            <div class="mt-3 h-px bg-slate-200" />
+            <div v-if="limitedCertificates.length" class="mt-3 space-y-3 text-sm leading-6">
+              <div v-for="(item, index) in limitedCertificates" :key="`cert-navy-${index}`">
+                <p class="font-bold">{{ item.ten }}</p>
+                <p>{{ item.don_vi }}</p>
+                <p class="text-slate-500">{{ item.nam }}</p>
               </div>
             </div>
+            <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật chứng chỉ.</p>
           </section>
-          <section class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kinh nghiệm / Case study</p>
-            <div v-if="experiences.length" class="mt-3 space-y-4">
-              <div v-for="(item, index) in experiences.slice(0, compact ? 2 : 3)" :key="`creative-exp-${index}`" class="rounded-2xl border border-white/70 bg-white px-4 py-4 shadow-sm">
+        </aside>
+
+        <main class="px-6 py-6 md:px-8">
+          <section class="mb-7">
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Giới thiệu</h4>
+            <div class="mt-3 h-px bg-slate-200" />
+            <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ summary }}</p>
+          </section>
+
+          <section class="mb-7">
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Kinh nghiệm làm việc</h4>
+            <div class="mt-3 h-px bg-slate-200" />
+            <div v-if="limitedExperiences.length" class="mt-4 space-y-5">
+              <article v-for="(item, index) in limitedExperiences" :key="`exp-navy-${index}`">
+                <p class="text-sm font-bold">{{ item.vi_tri }}</p>
+                <p class="mt-1 text-sm font-semibold">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
+                <p class="mt-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+                <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
+              </article>
+            </div>
+            <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật kinh nghiệm làm việc.</p>
+          </section>
+
+          <section>
+            <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Dự án nổi bật</h4>
+            <div class="mt-3 h-px bg-slate-200" />
+            <div v-if="limitedProjects.length" class="mt-4 space-y-5">
+              <article v-for="(item, index) in limitedProjects" :key="`project-navy-${index}`">
+                <p class="text-sm font-bold">{{ item.ten }}</p>
+                <p class="mt-1 text-sm font-semibold">{{ item.vai_tro || 'Vai trò đang cập nhật' }}</p>
+                <p v-if="item.cong_nghe" class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ item.cong_nghe }}</p>
+                <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
+              </article>
+            </div>
+            <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật dự án.</p>
+          </section>
+        </main>
+      </div>
+    </template>
+
+    <template v-else-if="template === 'topcv_maroon'">
+      <div class="grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
+        <aside class="bg-[#5b3133] text-white">
+          <div class="bg-[#a45a5d] px-6 py-7 text-center">
+            <div class="mx-auto flex h-52 w-52 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white text-5xl font-bold text-[#5b3133]">
+              <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" class="h-full w-full object-cover" />
+              <span v-else>{{ avatarInitials }}</span>
+            </div>
+            <h3 class="mt-6 text-3xl font-black">{{ fullName }}</h3>
+            <p class="mt-3 text-xl font-medium text-white/90">{{ title }}</p>
+          </div>
+
+          <div class="px-6 py-6">
+            <section class="mb-7 space-y-2 text-sm leading-6">
+              <p>{{ phone }}</p>
+              <p>{{ email }}</p>
+              <p>{{ targetIndustry }}</p>
+              <p>{{ targetPosition }}</p>
+            </section>
+
+            <section class="mb-7">
+              <h4 class="text-[15px] font-bold">Mục tiêu nghề nghiệp</h4>
+              <p class="mt-3 whitespace-pre-wrap text-sm leading-7 text-white/90">{{ objective }}</p>
+            </section>
+
+            <section class="mb-7">
+              <h4 class="text-[15px] font-bold">Kỹ năng</h4>
+              <div v-if="skills.length" class="mt-4 space-y-4">
+                <div v-for="(item, index) in skills.slice(0, compact ? 4 : 5)" :key="`skill-maroon-${index}`">
+                  <p class="mb-2 text-sm">{{ item.ten }}</p>
+                  <div class="h-3 overflow-hidden bg-white/20">
+                    <div class="h-full bg-[#d98a8f]" :style="{ width: `${cvSkillLevelPercent(item.muc_do)}%` }" />
+                  </div>
+                </div>
+              </div>
+              <p v-else class="mt-3 text-sm text-white/70">Chưa cập nhật kỹ năng.</p>
+            </section>
+
+            <section>
+              <h4 class="text-[15px] font-bold">Chứng chỉ / Dự án</h4>
+              <div class="mt-3 space-y-3 text-sm leading-6 text-white/90">
+                <div v-for="(item, index) in limitedCertificates" :key="`cert-maroon-${index}`">
+                  <p class="font-semibold">{{ item.ten }}</p>
+                  <p>{{ item.don_vi }}</p>
+                </div>
+                <div v-for="(item, index) in limitedProjects" :key="`project-maroon-${index}`">
+                  <p class="font-semibold">{{ item.ten }}</p>
+                  <p>{{ item.vai_tro || item.cong_nghe }}</p>
+                </div>
+              </div>
+              <p v-if="!limitedCertificates.length && !limitedProjects.length" class="mt-3 text-sm text-white/70">Chưa cập nhật chứng chỉ hoặc dự án.</p>
+            </section>
+          </div>
+        </aside>
+
+        <main class="bg-white px-8 py-8">
+          <section class="mb-8">
+            <h4 class="text-2xl font-bold text-slate-900">Học vấn</h4>
+            <div v-if="educations.length" class="mt-4 space-y-5">
+              <article v-for="(item, index) in educations" :key="`edu-maroon-${index}`">
                 <div class="flex flex-col gap-2 md:flex-row md:justify-between">
                   <div>
-                    <p class="text-sm font-bold">{{ item.vi_tri }}</p>
-                    <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
+                    <p class="text-lg font-bold text-slate-900">{{ item.chuyen_nganh || degreeLabel }}</p>
+                    <p class="mt-1 text-base font-semibold text-slate-900">{{ item.truong }}</p>
                   </div>
-                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+                  <p class="text-base text-slate-600">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
                 </div>
-                <p v-if="item.mo_ta" class="mt-2 text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
-              </div>
+                <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
+              </article>
             </div>
+            <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật học vấn.</p>
           </section>
-        </div>
+
+          <section class="mb-8">
+            <h4 class="text-2xl font-bold text-slate-900">Kinh nghiệm làm việc</h4>
+            <div v-if="limitedExperiences.length" class="mt-4 space-y-6">
+              <article v-for="(item, index) in limitedExperiences" :key="`exp-maroon-${index}`">
+                <div class="flex flex-col gap-2 md:flex-row md:justify-between">
+                  <div>
+                    <p class="text-xl font-bold text-slate-900">{{ item.vi_tri }}</p>
+                    <p class="mt-1 text-lg font-semibold text-slate-900">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
+                  </div>
+                  <p class="text-base text-slate-600">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+                </div>
+                <p v-if="item.mo_ta" class="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ item.mo_ta }}</p>
+              </article>
+            </div>
+            <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật kinh nghiệm làm việc.</p>
+          </section>
+
+          <section>
+            <h4 class="text-2xl font-bold text-slate-900">Giới thiệu / Tóm tắt</h4>
+            <p class="mt-4 whitespace-pre-wrap text-sm leading-7 text-slate-700">{{ summary }}</p>
+          </section>
+        </main>
       </div>
     </template>
 
     <template v-else>
-      <div class="border-b border-slate-200 px-5 py-4">
-        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 class="text-2xl font-black">{{ fullName }}</h3>
-            <p class="mt-1 text-sm font-semibold" :style="{ color: theme.accent }">{{ title }}</p>
+      <div class="px-8 py-10 md:px-12">
+        <header>
+          <h3 class="text-[40px] font-bold leading-none text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ fullName }}</h3>
+          <p class="mt-3 text-xl text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">
+            {{ targetIndustry }} | {{ phone }}
+          </p>
+          <p class="mt-1 text-xl text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ email }}</p>
+        </header>
+
+        <section class="mt-10">
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Summary</h4>
+          <div class="mt-3 h-px bg-slate-300" />
+          <p class="mt-4 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ summary || objective }}</p>
+        </section>
+
+        <section class="mt-10">
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Experience</h4>
+          <div class="mt-3 h-px bg-slate-300" />
+          <div v-if="limitedExperiences.length" class="mt-5 space-y-6">
+            <article v-for="(item, index) in limitedExperiences" :key="`exp-ats-${index}`">
+              <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.vi_tri }}</p>
+              <p class="mt-1 text-[17px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.cong_ty || 'Personal Projects' }}</p>
+              <p class="mt-1 text-[15px] text-slate-800" style="font-family: Georgia, 'Times New Roman', serif;">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+              <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.mo_ta }}</p>
+            </article>
           </div>
-          <div class="grid grid-cols-1 gap-1 text-right text-xs text-slate-500">
-            <span>{{ email }}</span>
-            <span>{{ phone }}</span>
+          <p v-else class="mt-4 text-[15px] text-slate-500" style="font-family: Georgia, 'Times New Roman', serif;">Chưa cập nhật kinh nghiệm.</p>
+        </section>
+
+        <section class="mt-10">
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Skills</h4>
+          <div class="mt-3 h-px bg-slate-300" />
+          <p class="mt-4 text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">
+            {{ skills.map((item) => item.ten).join(', ') || 'Chưa cập nhật kỹ năng.' }}
+          </p>
+        </section>
+
+        <section class="mt-10">
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Education</h4>
+          <div class="mt-3 h-px bg-slate-300" />
+          <div v-if="educations.length" class="mt-5 space-y-4">
+            <article v-for="(item, index) in educations" :key="`edu-ats-${index}`">
+              <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.truong }}</p>
+              <p class="mt-1 text-[17px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.chuyen_nganh || degreeLabel }} | {{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
+              <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.mo_ta }}</p>
+            </article>
           </div>
-        </div>
-      </div>
-      <div class="grid grid-cols-1 gap-4 p-5 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <div class="space-y-4">
-          <div class="rounded-3xl p-4" :style="{ backgroundColor: theme.panel }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Snapshot</p>
-            <div class="mt-3 space-y-2 text-sm">
-              <p v-for="card in primaryCards" :key="card.label">{{ card.label }}: <span class="font-semibold">{{ card.value }}</span></p>
-            </div>
+          <p v-else class="mt-4 text-[15px] text-slate-500" style="font-family: Georgia, 'Times New Roman', serif;">Chưa cập nhật học vấn.</p>
+        </section>
+
+        <section class="mt-10">
+          <h4 class="text-2xl font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">Projects & Certifications</h4>
+          <div class="mt-3 h-px bg-slate-300" />
+          <div class="mt-5 space-y-4">
+            <article v-for="(item, index) in limitedProjects" :key="`project-ats-${index}`">
+              <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.ten }}</p>
+              <p class="mt-1 text-[15px] text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.cong_nghe }}<span v-if="item.vai_tro"> | {{ item.vai_tro }}</span></p>
+              <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.mo_ta }}</p>
+            </article>
+            <article v-for="(item, index) in limitedCertificates" :key="`cert-ats-${index}`">
+              <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.ten }}</p>
+              <p class="mt-1 text-[15px] text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.don_vi }}<span v-if="item.nam"> | {{ item.nam }}</span></p>
+            </article>
           </div>
-          <div class="rounded-3xl p-4" :style="{ backgroundColor: theme.panel }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kỹ năng</p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <span v-for="(item, index) in skills.slice(0, compact ? 5 : 8)" :key="`compact-skill-${index}`" class="rounded-full bg-white px-3 py-1.5 text-xs font-semibold shadow-sm">
-                {{ item.ten }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="space-y-4">
-          <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Mục tiêu nghề nghiệp</p>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ objective }}</p>
-          </div>
-          <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Giới thiệu</p>
-            <p class="mt-3 whitespace-pre-wrap text-sm leading-7">{{ summary }}</p>
-          </div>
-          <div class="rounded-3xl border p-4" :style="{ borderColor: theme.accentSoft }">
-            <p class="text-xs font-semibold uppercase tracking-[0.24em]" :style="{ color: theme.accent }">Kinh nghiệm nổi bật</p>
-            <div v-if="experiences.length" class="mt-3 space-y-3">
-              <div v-for="(item, index) in experiences.slice(0, compact ? 2 : 3)" :key="`compact-exp-${index}`" class="rounded-2xl p-4" :style="{ backgroundColor: theme.panel }">
-                <div class="flex flex-col gap-1">
-                  <p class="text-sm font-bold">{{ item.vi_tri }}</p>
-                  <p class="text-sm text-slate-500">{{ item.cong_ty || 'Chưa cập nhật công ty' }}</p>
-                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ formatCvPeriod(item.bat_dau, item.ket_thuc) }}</p>
-                </div>
-                <p v-if="item.mo_ta" class="mt-2 text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
-              </div>
-            </div>
-          </div>
-        </div>
+          <p v-if="!limitedProjects.length && !limitedCertificates.length" class="mt-4 text-[15px] text-slate-500" style="font-family: Georgia, 'Times New Roman', serif;">Chưa cập nhật dự án hoặc chứng chỉ.</p>
+        </section>
       </div>
     </template>
   </div>

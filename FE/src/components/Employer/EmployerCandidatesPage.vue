@@ -1,10 +1,12 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { employerCandidateService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
 
 const notify = useNotify()
+const { currentInternalRoleLabel, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const candidates = ref([])
@@ -173,7 +175,9 @@ const openCv = async (candidate) => {
   }
 }
 
-onMounted(fetchCandidates)
+onMounted(async () => {
+  await Promise.all([ensurePermissionsLoaded(), fetchCandidates()])
+})
 </script>
 
 <template>
@@ -188,6 +192,10 @@ onMounted(fetchCandidates)
       <div class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm text-slate-500 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
         Gợi ý: mở CV trực tiếp từ từng hồ sơ công khai để đánh giá nhanh ứng viên.
       </div>
+    </div>
+
+    <div class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+      Vai trò hiện tại: <span class="font-bold">{{ currentInternalRoleLabel }}</span>. Màn ứng viên được mở ở chế độ tra cứu hồ sơ công khai trong hệ thống.
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">

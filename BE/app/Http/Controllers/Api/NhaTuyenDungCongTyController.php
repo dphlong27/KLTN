@@ -43,10 +43,14 @@ class NhaTuyenDungCongTyController extends Controller
         $data['tong_so_hr'] = $congTy->thanhViens->count();
         $data['so_nguoi_theo_doi'] = $congTy->nguoi_dung_theo_dois_count ?? 0;
         $data['la_chu_so_huu'] = $this->isCompanyOwner($user, $congTy);
+        $data['vai_tro_noi_bo_hien_tai'] = $user?->layVaiTroNoiBoCongTy($congTy);
+        $data['ten_vai_tro_noi_bo_hien_tai'] = CongTy::nhanVaiTroNoiBo($data['vai_tro_noi_bo_hien_tai']);
+        $data['quyen_noi_bo'] = CongTy::quyenTheoVaiTroNoiBo($data['vai_tro_noi_bo_hien_tai']);
         $data['thanh_viens'] = $congTy->thanhViens->map(function (NguoiDung $member) {
             $payload = $member->toArray();
             $payload['vai_tro_noi_bo'] = $member->pivot?->vai_tro_noi_bo;
-            $payload['la_chu_so_huu'] = $member->pivot?->vai_tro_noi_bo === 'owner';
+            $payload['ten_vai_tro_noi_bo'] = CongTy::nhanVaiTroNoiBo($member->pivot?->vai_tro_noi_bo);
+            $payload['la_chu_so_huu'] = $member->pivot?->vai_tro_noi_bo === CongTy::VAI_TRO_NOI_BO_OWNER;
             $payload['avatar_url'] = $member->anh_dai_dien
                 ? url('/api/v1/anh-dai-dien?path=' . urlencode($member->anh_dai_dien))
                 : null;
@@ -167,6 +171,7 @@ class NhaTuyenDungCongTyController extends Controller
             'data' => [
                 'cong_ty_id' => $congTy->id,
                 'la_chu_so_huu' => $this->isCompanyOwner($this->getAuthenticatedEmployer(), $congTy),
+                'vai_tro_noi_bo_options' => CongTy::VAI_TRO_NOI_BO_LABELS,
                 'thanh_viens' => $this->mapCompanyData($congTy)['thanh_viens'],
             ],
         ]);
@@ -193,6 +198,7 @@ class NhaTuyenDungCongTyController extends Controller
 
         $data = $request->validate([
             'email' => ['required', 'email', 'max:150'],
+            'vai_tro_noi_bo' => ['nullable', 'string', 'in:' . implode(',', array_filter(CongTy::danhSachVaiTroNoiBo(), fn ($role) => $role !== CongTy::VAI_TRO_NOI_BO_OWNER))],
         ]);
 
         $member = NguoiDung::where('email', $data['email'])->first();
@@ -234,7 +240,7 @@ class NhaTuyenDungCongTyController extends Controller
         }
 
         $congTy->thanhViens()->attach($member->id, [
-            'vai_tro_noi_bo' => 'member',
+            'vai_tro_noi_bo' => $data['vai_tro_noi_bo'] ?? CongTy::VAI_TRO_NOI_BO_RECRUITER,
             'duoc_tao_boi' => $user->id,
             'created_at' => now(),
             'updated_at' => now(),
@@ -247,6 +253,64 @@ class NhaTuyenDungCongTyController extends Controller
                 'cong_ty' => $this->mapCompanyData($congTy->fresh()),
             ],
         ], 201);
+    }
+
+    public function updateMemberRole(Request $request, int $memberId): JsonResponse
+    {
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$congTy || !$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn chưa thuộc công ty nào.',
+            ], 404);
+        }
+
+        if (!$this->isCompanyOwner($user, $congTy)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Chỉ chủ sở hữu công ty mới có thể cập nhật vai trò HR.',
+            ], 403);
+        }
+
+        $data = $request->validate([
+            'vai_tro_noi_bo' => ['required', 'string', 'in:' . implode(',', array_filter(CongTy::danhSachVaiTroNoiBo(), fn ($role) => $role !== CongTy::VAI_TRO_NOI_BO_OWNER))],
+        ], [
+            'vai_tro_noi_bo.required' => 'Vui lòng chọn vai trò nội bộ.',
+            'vai_tro_noi_bo.in' => 'Vai trò nội bộ không hợp lệ.',
+        ]);
+
+        $member = $congTy->thanhViens()
+            ->where('nguoi_dungs.id', $memberId)
+            ->first();
+
+        if (!$member) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy HR trong công ty.',
+            ], 404);
+        }
+
+        if (($member->pivot?->vai_tro_noi_bo ?? '') === CongTy::VAI_TRO_NOI_BO_OWNER) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể thay đổi vai trò của chủ sở hữu công ty.',
+            ], 422);
+        }
+
+        $congTy->thanhViens()->updateExistingPivot($memberId, [
+            'vai_tro_noi_bo' => $data['vai_tro_noi_bo'],
+            'updated_at' => now(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã cập nhật vai trò nội bộ.',
+            'data' => [
+                'cong_ty' => $this->mapCompanyData($congTy->fresh()),
+            ],
+        ]);
     }
 
     public function removeMember(int $memberId): JsonResponse
@@ -279,7 +343,7 @@ class NhaTuyenDungCongTyController extends Controller
             ], 404);
         }
 
-        if (($member->pivot?->vai_tro_noi_bo ?? '') === 'owner') {
+        if (($member->pivot?->vai_tro_noi_bo ?? '') === CongTy::VAI_TRO_NOI_BO_OWNER) {
             return response()->json([
                 'success' => false,
                 'message' => 'Không thể gỡ chủ sở hữu công ty khỏi danh sách thành viên.',

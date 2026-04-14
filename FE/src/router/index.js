@@ -157,6 +157,12 @@ const routes = [
     meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
   },
   {
+    path: '/cv-builder',
+    name: 'CvBuilder',
+    component: () => import('@/components/Dashboard/CvBuilderPage.vue'),
+    meta: { layout: 'cv-builder', requiresAuth: true, role: ROLE_CANDIDATE, pageTitle: 'Tạo CV trên hệ thống' }
+  },
+  {
     path: '/my-skills',
     name: 'MySkills',
     component: () => import('@/components/Dashboard/MySkillsPage.vue'),

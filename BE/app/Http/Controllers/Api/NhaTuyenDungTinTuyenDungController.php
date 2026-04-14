@@ -19,6 +19,19 @@ class NhaTuyenDungTinTuyenDungController extends Controller
 {
     use ResolvesEmployerCompany;
 
+    private function resolveValidHrPhuTrachId(?int $memberId, CongTy $congTy, int $fallbackUserId): int
+    {
+        if (!$memberId) {
+            return $fallbackUserId;
+        }
+
+        $exists = $congTy->thanhViens()
+            ->where('nguoi_dungs.id', $memberId)
+            ->exists();
+
+        return $exists ? $memberId : $fallbackUserId;
+    }
+
     private function isPubliclyActive(TinTuyenDung $tin): bool
     {
         $tin->loadMissing('congTy:id,trang_thai');
@@ -87,7 +100,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             ], 404);
         }
 
-        $query = TinTuyenDung::with('nganhNghes:id,ten_nganh')
+        $query = TinTuyenDung::with(['nganhNghes:id,ten_nganh', 'hrPhuTrach:id,ho_ten,email'])
             ->withCount([
                 'acceptedApplications as so_luong_da_nhan',
                 'ungTuyens as tong_ung_tuyen_thuc_te' => fn ($query) => $query->whereNotNull('thoi_gian_ung_tuyen'),
@@ -101,6 +114,14 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where('tieu_de', 'like', "%{$search}%");
+        }
+
+        if ($request->filled('hr_phu_trach_id')) {
+            $hrPhuTrachId = $request->input('hr_phu_trach_id') === 'me'
+                ? (int) auth()->id()
+                : (int) $request->input('hr_phu_trach_id');
+
+            $query->where('hr_phu_trach_id', $hrPhuTrachId);
         }
 
         $data = $query->orderBy('created_at', 'desc')->paginate((int) $request->get('per_page', 15));
@@ -129,10 +150,16 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         unset($data['nganh_nghes']);
 
         $data['cong_ty_id'] = $congTyId;
+        $congTy = $this->getCurrentEmployerCompany();
+        $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+            isset($data['hr_phu_trach_id']) ? (int) $data['hr_phu_trach_id'] : null,
+            $congTy,
+            (int) auth()->id(),
+        );
 
         $tin = TinTuyenDung::create($data);
         $tin->nganhNghes()->attach($nganhNgheIds);
-        $tin->load('nganhNghes:id,ten_nganh');
+        $tin->load(['nganhNghes:id,ten_nganh', 'hrPhuTrach:id,ho_ten,email']);
 
         $this->broadcastJobActivityIfNeeded($tin);
 
@@ -159,8 +186,17 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             unset($data['nganh_nghes']);
         }
 
+        if (array_key_exists('hr_phu_trach_id', $data)) {
+            $congTy = $this->getCurrentEmployerCompany();
+            $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                $data['hr_phu_trach_id'] ? (int) $data['hr_phu_trach_id'] : null,
+                $congTy,
+                (int) auth()->id(),
+            );
+        }
+
         $tin->update($data);
-        $tin = $tin->fresh()->load('nganhNghes:id,ten_nganh');
+        $tin = $tin->fresh()->load(['nganhNghes:id,ten_nganh', 'hrPhuTrach:id,ho_ten,email']);
 
         $this->broadcastJobActivityIfNeeded($tin, $wasPubliclyActive);
 
@@ -179,6 +215,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::with([
                 'nganhNghes:id,ten_nganh',
+                'hrPhuTrach:id,ho_ten,email',
                 'parsing:id,tin_tuyen_dung_id,parsed_skills_json,parsed_requirements_json,parsed_benefits_json,parsed_salary_json,parsed_location_json,parse_status,parser_version,confidence_score,error_message,updated_at',
                 'kyNangYeuCaus.kyNang:id,ten_ky_nang,icon',
             ])
