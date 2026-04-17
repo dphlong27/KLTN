@@ -254,6 +254,12 @@ const routes = [
     meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
   },
   {
+    path: '/employer/hr-management',
+    name: 'EmployerHrManagement',
+    component: () => import('@/components/Employer/EmployerHrManagementPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
+  },
+  {
     path: '/employer/profile',
     name: 'EmployerProfile',
     component: () => import('@/components/Employer/EmployerProfilePage.vue'),

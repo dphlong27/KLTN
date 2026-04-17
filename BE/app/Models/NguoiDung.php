@@ -142,6 +142,11 @@ class NguoiDung extends Authenticatable implements MustVerifyEmail
             ->withTimestamps();
     }
 
+    public function loiMoiCongTyDaNhan()
+    {
+        return $this->hasMany(\App\Models\CongTyLoiMoi::class, 'nguoi_dung_id');
+    }
+
     public function congTyHienTai(): ?\App\Models\CongTy
     {
         $company = $this->congTyThanhViens()

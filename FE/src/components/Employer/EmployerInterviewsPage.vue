@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { employerApplicationService, employerCandidateService, employerJobService } from '@/services/api'
 import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
@@ -13,7 +13,15 @@ import {
 } from '@/utils/applicationStatus'
 
 const notify = useNotify()
-const { canProcessApplications, currentInternalRoleLabel, assignableMembers, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
+const {
+  canProcessApplications,
+  currentInternalRoleLabel,
+  assignableMembers,
+  companyMembers,
+  ensurePermissionsLoaded,
+  currentEmployerId,
+  canManageAllAssignments,
+} = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -40,6 +48,23 @@ const hrFilterOptions = computed(() => ([
   { id: 'me', label: 'Tôi phụ trách' },
   ...assignableMembers.value,
 ]))
+
+const interviewerOptions = computed(() => {
+  const options = companyMembers.value.map((member) => ({
+    value: String(member?.ho_ten || '').trim(),
+    label: `${member?.ho_ten || 'HR'}${member?.ten_vai_tro_noi_bo ? ` (${member.ten_vai_tro_noi_bo})` : ''}`,
+  })).filter((item) => item.value)
+
+  const currentValue = String(form.nguoi_phong_van || '').trim()
+  if (currentValue && !options.some((item) => item.value === currentValue)) {
+    options.unshift({
+      value: currentValue,
+      label: `${currentValue} (dữ liệu cũ)`,
+    })
+  }
+
+  return options
+})
 
 const form = reactive({
   trang_thai: 0,
@@ -173,6 +198,21 @@ const formatDateTimeInput = (value) => {
 const isFinalApplicationStatus = (application) => isFinalApplicationStatusValue(application?.trang_thai)
 
 const canEmployerUpdateApplication = (application) => !application?.da_rut_don
+const isOwnedApplication = (application) => {
+  const ownedByApplication = Number(application?.hr_phu_trach?.id || application?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
+  const ownedByJob = Number(application?.tin_tuyen_dung?.hr_phu_trach?.id || application?.tin_tuyen_dung?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
+  return ownedByApplication || ownedByJob
+}
+const canMutateApplication = (application) => Boolean(
+  canProcessApplications.value
+  && !application?.da_rut_don
+  && (canManageAllAssignments.value || isOwnedApplication(application)),
+)
+const ownershipHint = computed(() =>
+  canProcessApplications.value && !canManageAllAssignments.value
+    ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.`
+    : ''
+)
 
 const canResendInterviewEmail = (application) =>
   Boolean(application?.id)
@@ -238,13 +278,10 @@ const goToPage = async (page) => {
 }
 
 const openModal = (application) => {
-  if (!canProcessApplications.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể cập nhật quy trình ứng tuyển.`)
-    return
-  }
-
-  if (!canEmployerUpdateApplication(application)) {
-    notify.info('Ứng viên đã rút đơn nên không thể cập nhật xử lý nữa.')
+  if (!canMutateApplication(application)) {
+    notify.warning(canProcessApplications.value
+      ? 'Bạn chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể cập nhật quy trình ứng tuyển.`)
     return
   }
 
@@ -345,8 +382,10 @@ const openCandidateDetail = async (application) => {
 
 const saveApplication = async () => {
   if (!selectedApplication.value) return
-  if (!canProcessApplications.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể cập nhật trạng thái ứng tuyển.`)
+  if (!canMutateApplication(selectedApplication.value)) {
+    notify.warning(canProcessApplications.value
+      ? 'Bạn chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể cập nhật trạng thái ứng tuyển.`)
     return
   }
 
@@ -374,8 +413,10 @@ const saveApplication = async () => {
 }
 
 const resendInterviewEmail = async (application) => {
-  if (!canProcessApplications.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể gửi lại email lịch phỏng vấn.`)
+  if (!canMutateApplication(application)) {
+    notify.warning(canProcessApplications.value
+      ? 'Bạn chỉ có thể gửi lại email cho các đơn ứng tuyển mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể gửi lại email lịch phỏng vấn.`)
     return
   }
 
@@ -397,6 +438,15 @@ const resendInterviewEmail = async (application) => {
 
 onMounted(async () => {
   await Promise.all([ensurePermissionsLoaded(), fetchJobs(), fetchApplications()])
+})
+
+watch(() => form.hr_phu_trach_id, (value) => {
+  if (!value || form.nguoi_phong_van) return
+
+  const selectedMember = companyMembers.value.find((member) => String(member?.id) === String(value))
+  if (selectedMember?.ho_ten) {
+    form.nguoi_phong_van = selectedMember.ho_ten
+  }
 })
 </script>
 
@@ -424,6 +474,12 @@ onMounted(async () => {
       class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
     >
       Bạn đang đăng nhập với vai trò <span class="font-bold">{{ currentInternalRoleLabel }}</span>. Màn này đang ở chế độ chỉ xem, các thao tác xử lý ứng tuyển và phỏng vấn đã bị khóa.
+    </div>
+    <div
+      v-else-if="ownershipHint"
+      class="mb-6 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200"
+    >
+      {{ ownershipHint }}
     </div>
 
     <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -552,7 +608,7 @@ onMounted(async () => {
                   <button
                     v-if="canResendInterviewEmail(application)"
                     class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/15"
-                    :disabled="resendingEmailId === application.id || !canProcessApplications"
+                    :disabled="resendingEmailId === application.id || !canMutateApplication(application)"
                     type="button"
                     @click="resendInterviewEmail(application)"
                   >
@@ -574,10 +630,10 @@ onMounted(async () => {
                   </button>
                   <button
                     class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60"
-                    :class="canEmployerUpdateApplication(application)
+                    :class="canMutateApplication(application)
                       ? 'border-slate-200 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800'
                       : 'border-slate-200 text-slate-400 dark:border-slate-800 dark:text-slate-500'"
-                    :disabled="!canEmployerUpdateApplication(application) || !canProcessApplications"
+                    :disabled="!canMutateApplication(application)"
                     type="button"
                     @click="openModal(application)"
                   >
@@ -622,6 +678,12 @@ onMounted(async () => {
               <div class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">HR phụ trách:</span>
                 <span class="ml-2 break-words">{{ application.hr_phu_trach?.ho_ten || application.tin_tuyen_dung?.hr_phu_trach?.ho_ten || 'Chưa gán' }}</span>
+                <span
+                  v-if="canProcessApplications && !canManageAllAssignments && !isOwnedApplication(application)"
+                  class="ml-2 inline-flex rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300"
+                >
+                  Không thuộc phần việc của bạn
+                </span>
               </div>
 
               <div
@@ -778,7 +840,8 @@ onMounted(async () => {
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Trạng thái</label>
             <select
               v-model="form.trang_thai"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option v-for="status in statusOptionsForSelectedApplication" :key="String(status.value)" :value="status.value">
                 {{ status.label }}
@@ -796,7 +859,8 @@ onMounted(async () => {
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ngày hẹn phỏng vấn</label>
             <input
               v-model="form.ngay_hen_phong_van"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               type="datetime-local"
             >
           </div>
@@ -805,7 +869,8 @@ onMounted(async () => {
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Hình thức phỏng vấn</label>
             <select
               v-model="form.hinh_thuc_phong_van"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="">Chưa chọn</option>
               <option value="online">Online</option>
@@ -816,32 +881,44 @@ onMounted(async () => {
 
           <div>
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Người phỏng vấn</label>
-            <input
+            <select
               v-model="form.nguoi_phong_van"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
-              placeholder="Ví dụ: Anh Nguyễn Văn A"
-              type="text"
+              :disabled="!canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
+              <option value="">Chọn người phỏng vấn</option>
+              <option v-for="option in interviewerOptions" :key="option.value" :value="option.value">
+                {{ option.label }}
+              </option>
+            </select>
+            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Chỉ hiển thị các HR nội bộ hiện có của công ty.
+            </p>
           </div>
 
           <div>
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">HR phụ trách</label>
             <select
               v-model="form.hr_phu_trach_id"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canManageAllAssignments || !canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
             >
               <option value="">Tự gán theo người xử lý</option>
               <option v-for="member in assignableMembers" :key="member.id" :value="String(member.id)">
                 {{ member.label }}
               </option>
             </select>
+            <p v-if="!canManageAllAssignments" class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Với vai trò {{ currentInternalRoleLabel }}, đơn ứng tuyển sẽ luôn được gán cho chính bạn khi cập nhật.
+            </p>
           </div>
 
           <div class="md:col-span-2">
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link meeting / địa điểm</label>
             <input
               v-model="form.link_phong_van"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               placeholder="https://meet.google.com/... hoặc địa điểm phỏng vấn"
               type="text"
             >
@@ -851,7 +928,8 @@ onMounted(async () => {
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Kết quả phỏng vấn</label>
             <input
               v-model="form.ket_qua_phong_van"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canProcessApplications"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               placeholder="Ví dụ: Qua vòng 1, cần thêm bài test..."
               type="text"
             >
@@ -861,7 +939,8 @@ onMounted(async () => {
             <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ghi chú</label>
             <textarea
               v-model="form.ghi_chu"
-              class="min-h-[130px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white"
+              :disabled="!canProcessApplications"
+              class="min-h-[130px] w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-[#2463eb] dark:border-slate-800 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
               placeholder="Ghi chú nội bộ về hồ sơ, phản hồi sau buổi phỏng vấn hoặc bước tiếp theo..."
             />
           </div>

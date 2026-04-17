@@ -809,6 +809,17 @@ export const employerCompanyService = {
       body: JSON.stringify({ email, vai_tro_noi_bo: vaiTroNoiBo }),
     }),
 
+  sendInvitation: (email, vaiTroNoiBo = 'recruiter') =>
+    apiCall('/nha-tuyen-dung/cong-ty/loi-mois', {
+      method: 'POST',
+      body: JSON.stringify({ email, vai_tro_noi_bo: vaiTroNoiBo }),
+    }),
+
+  cancelInvitation: (inviteId) =>
+    apiCall(`/nha-tuyen-dung/cong-ty/loi-mois/${inviteId}`, {
+      method: 'DELETE',
+    }),
+
   updateMemberRole: (memberId, vaiTroNoiBo) =>
     apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}/vai-tro`, {
       method: 'PATCH',
@@ -818,6 +829,28 @@ export const employerCompanyService = {
   removeMember: (memberId) =>
     apiCall(`/nha-tuyen-dung/cong-ty/thanh-viens/${memberId}`, {
       method: 'DELETE',
+    }),
+
+  getHrAuditLogs: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/cong-ty/hr-audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getReceivedInvitations: () =>
+    apiCall('/nha-tuyen-dung/loi-moi-cong-ty/da-nhan', {
+      method: 'GET',
+    }),
+
+  respondToInvitation: (inviteId, hanhDong) =>
+    apiCall(`/nha-tuyen-dung/loi-moi-cong-ty/${inviteId}/phan-hoi`, {
+      method: 'POST',
+      body: JSON.stringify({ hanh_dong: hanhDong }),
     }),
 }
 

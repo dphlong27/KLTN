@@ -101,6 +101,11 @@ class CongTy extends Model
             ->withTimestamps();
     }
 
+    public function loiMoiThanhViens()
+    {
+        return $this->hasMany(CongTyLoiMoi::class, 'cong_ty_id');
+    }
+
     /**
      * Ngành nghề chính.
      */

@@ -150,6 +150,7 @@ class NhaTuyenDungUngTuyenController extends Controller
     public function updateTrangThai(CapNhatTrangThaiRequest $request, $id): JsonResponse
     {
         $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
 
         if (!$congTy) {
             return response()->json(['success' => false, 'message' => 'Lỗi công ty'], 403);
@@ -157,7 +158,8 @@ class NhaTuyenDungUngTuyenController extends Controller
 
         $ungTuyen = UngTuyen::whereHas('tinTuyenDung', function ($q) use ($congTy) {
             $q->where('cong_ty_id', $congTy->id);
-        })->findOrFail($id);
+        })->with('tinTuyenDung:id,cong_ty_id,hr_phu_trach_id')->findOrFail($id);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
 
         $trangThaiMoi = (int) $request->trang_thai;
 
@@ -235,11 +237,15 @@ class NhaTuyenDungUngTuyenController extends Controller
         }
 
         if ($request->has('hr_phu_trach_id')) {
-            $dataUpdate['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
-                $request->hr_phu_trach_id ? (int) $request->hr_phu_trach_id : null,
-                $congTy,
-                (int) auth()->id(),
-            );
+            if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+                $dataUpdate['hr_phu_trach_id'] = (int) auth()->id();
+            } else {
+                $dataUpdate['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                    $request->hr_phu_trach_id ? (int) $request->hr_phu_trach_id : null,
+                    $congTy,
+                    (int) auth()->id(),
+                );
+            }
         } elseif (empty($ungTuyen->hr_phu_trach_id)) {
             $dataUpdate['hr_phu_trach_id'] = (int) auth()->id();
         }
@@ -307,6 +313,7 @@ class NhaTuyenDungUngTuyenController extends Controller
     public function guiLaiEmailPhongVan(Request $request, $id): JsonResponse
     {
         $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
 
         if (!$congTy) {
             return response()->json([
@@ -318,6 +325,7 @@ class NhaTuyenDungUngTuyenController extends Controller
         $ungTuyen = UngTuyen::whereHas('tinTuyenDung', function ($q) use ($congTy) {
             $q->where('cong_ty_id', $congTy->id);
         })->with(['tinTuyenDung.congTy', 'hoSo.nguoiDung'])->findOrFail($id);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
 
         if ($ungTuyen->da_rut_don) {
             return response()->json([

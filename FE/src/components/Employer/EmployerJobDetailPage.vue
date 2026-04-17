@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { employerApplicationService, employerJobService } from '@/services/api'
+import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { getApplicationStatusMeta } from '@/utils/applicationStatus'
 import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
@@ -9,6 +10,7 @@ import { formatDateTimeVN, formatHistoricalDateTimeVN } from '@/utils/dateTime'
 const route = useRoute()
 const router = useRouter()
 const notify = useNotify()
+const { ensurePermissionsLoaded, canManageJobs, canManageAllAssignments, currentEmployerId, currentInternalRoleLabel } = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const parsingLoading = ref(false)
@@ -91,6 +93,8 @@ const statusCards = computed(() => {
 })
 
 const applicationStatusMeta = getApplicationStatusMeta
+const isOwnedJob = computed(() => Number(job.value?.hr_phu_trach?.id || job.value?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0))
+const canMutateCurrentJob = computed(() => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob.value)))
 
 const requiredSkills = computed(() => {
   const manualSkills = (job.value?.ky_nang_yeu_caus || [])
@@ -147,6 +151,12 @@ const fetchJobDetail = async () => {
 
 const parseJob = async () => {
   if (!job.value) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể parse JD cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
+    return
+  }
 
   parsingLoading.value = true
   try {
@@ -162,6 +172,12 @@ const parseJob = async () => {
 
 const toggleStatus = async () => {
   if (!job.value) return
+  if (!canMutateCurrentJob.value) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể đổi trạng thái cho tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
+    return
+  }
 
   togglingStatus.value = true
   try {
@@ -175,7 +191,10 @@ const toggleStatus = async () => {
   }
 }
 
-onMounted(fetchJobDetail)
+onMounted(async () => {
+  await ensurePermissionsLoaded()
+  await fetchJobDetail()
+})
 </script>
 
 <template>
@@ -224,13 +243,23 @@ onMounted(fetchJobDetail)
                 <span class="material-symbols-outlined text-[18px]">event</span>
                 Hết hạn: {{ formatDateTime(job.ngay_het_han) }}
               </span>
+              <span class="inline-flex items-center gap-2 rounded-2xl bg-white/8 px-4 py-2 backdrop-blur">
+                <span class="material-symbols-outlined text-[18px]">badge</span>
+                HR phụ trách: {{ job.hr_phu_trach?.ho_ten || 'Chưa gán' }}
+              </span>
             </div>
+            <p
+              v-if="canManageJobs && !canManageAllAssignments && !isOwnedJob"
+              class="mt-4 inline-flex rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-100"
+            >
+              Bạn đang xem tin không thuộc phần việc của mình. Các thao tác cập nhật đã bị khóa.
+            </p>
           </div>
 
           <div class="flex flex-wrap gap-3 xl:justify-end">
             <button
               class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15 disabled:opacity-60"
-              :disabled="parsingLoading"
+              :disabled="parsingLoading || !canMutateCurrentJob"
               type="button"
               @click="parseJob"
             >
@@ -241,7 +270,7 @@ onMounted(fetchJobDetail)
             </button>
             <button
               class="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-bold text-[#1f49b6] shadow-lg shadow-black/10 transition hover:-translate-y-0.5 disabled:opacity-60"
-              :disabled="togglingStatus"
+              :disabled="togglingStatus || !canMutateCurrentJob"
               type="button"
               @click="toggleStatus"
             >

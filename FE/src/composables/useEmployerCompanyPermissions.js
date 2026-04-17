@@ -1,5 +1,6 @@
 import { computed, readonly, ref } from 'vue'
 import { employerCompanyService } from '@/services/api'
+import { getStoredEmployer } from '@/utils/authStorage'
 
 const company = ref(null)
 const loading = ref(false)
@@ -41,6 +42,7 @@ const loadEmployerCompanyPermissions = async ({ force = false } = {}) => {
 }
 
 export const useEmployerCompanyPermissions = () => {
+  const currentEmployer = computed(() => getStoredEmployer() || null)
   const permissions = computed(() => normalizePermissions(company.value?.quyen_noi_bo))
   const companyMembers = computed(() => Array.isArray(company.value?.thanh_viens) ? company.value.thanh_viens : [])
   const assignableMembers = computed(() =>
@@ -52,12 +54,14 @@ export const useEmployerCompanyPermissions = () => {
   )
   const currentInternalRole = computed(() => company.value?.vai_tro_noi_bo_hien_tai || null)
   const currentInternalRoleLabel = computed(() => company.value?.ten_vai_tro_noi_bo_hien_tai || 'HR Member')
+  const currentEmployerId = computed(() => Number(currentEmployer.value?.id || 0) || null)
   const hasCompany = computed(() => Boolean(company.value?.id))
   const canViewEmployerData = computed(() => Boolean(permissions.value.co_the_xem))
   const canManageCompanyProfile = computed(() => Boolean(permissions.value.co_the_quan_ly_cong_ty))
   const canManageJobs = computed(() => Boolean(permissions.value.co_the_quan_ly_tin_tuyen_dung))
   const canProcessApplications = computed(() => Boolean(permissions.value.co_the_xu_ly_ung_tuyen))
   const canManageMembers = computed(() => Boolean(permissions.value.co_the_quan_ly_thanh_vien))
+  const canManageAllAssignments = computed(() => ['owner', 'admin_hr'].includes(currentInternalRole.value || ''))
 
   return {
     company: readonly(company),
@@ -65,6 +69,7 @@ export const useEmployerCompanyPermissions = () => {
     assignableMembers,
     permissions,
     hasCompany,
+    currentEmployerId,
     currentInternalRole,
     currentInternalRoleLabel,
     canViewEmployerData,
@@ -72,6 +77,7 @@ export const useEmployerCompanyPermissions = () => {
     canManageJobs,
     canProcessApplications,
     canManageMembers,
+    canManageAllAssignments,
     permissionsLoading: readonly(loading),
     permissionsLoaded: readonly(loaded),
     ensurePermissionsLoaded: loadEmployerCompanyPermissions,

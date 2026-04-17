@@ -151,11 +151,17 @@ class NhaTuyenDungTinTuyenDungController extends Controller
 
         $data['cong_ty_id'] = $congTyId;
         $congTy = $this->getCurrentEmployerCompany();
-        $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
-            isset($data['hr_phu_trach_id']) ? (int) $data['hr_phu_trach_id'] : null,
-            $congTy,
-            (int) auth()->id(),
-        );
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+            $data['hr_phu_trach_id'] = (int) auth()->id();
+        } else {
+            $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                isset($data['hr_phu_trach_id']) ? (int) $data['hr_phu_trach_id'] : null,
+                $congTy,
+                (int) auth()->id(),
+            );
+        }
 
         $tin = TinTuyenDung::create($data);
         $tin->nganhNghes()->attach($nganhNgheIds);
@@ -177,6 +183,9 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     {
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+        $this->abortIfCannotManageJobRecord($user, $congTy, $tin);
         $wasPubliclyActive = $this->isPubliclyActive($tin);
 
         $data = $request->validated();
@@ -187,12 +196,15 @@ class NhaTuyenDungTinTuyenDungController extends Controller
         }
 
         if (array_key_exists('hr_phu_trach_id', $data)) {
-            $congTy = $this->getCurrentEmployerCompany();
-            $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
-                $data['hr_phu_trach_id'] ? (int) $data['hr_phu_trach_id'] : null,
-                $congTy,
-                (int) auth()->id(),
-            );
+            if (!$this->coTheQuanLyTatCaBanGhiEmployer($user, $congTy)) {
+                $data['hr_phu_trach_id'] = (int) auth()->id();
+            } else {
+                $data['hr_phu_trach_id'] = $this->resolveValidHrPhuTrachId(
+                    $data['hr_phu_trach_id'] ? (int) $data['hr_phu_trach_id'] : null,
+                    $congTy,
+                    (int) auth()->id(),
+                );
+            }
         }
 
         $tin->update($data);
@@ -246,6 +258,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     {
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $this->abortIfCannotManageJobRecord($this->getAuthenticatedEmployer(), $this->getCurrentEmployerCompany(), $tin);
         $wasPubliclyActive = $this->isPubliclyActive($tin);
 
         $tin->trang_thai = $tin->trang_thai == 1 ? 0 : 1;
@@ -268,6 +281,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     {
         $congTyId = $this->getCongTyId();
         $tin = TinTuyenDung::where('cong_ty_id', $congTyId)->findOrFail($id);
+        $this->abortIfCannotManageJobRecord($this->getAuthenticatedEmployer(), $this->getCurrentEmployerCompany(), $tin);
 
         if ($tin->ungTuyens()->whereNotNull('thoi_gian_ung_tuyen')->exists()) {
             return response()->json([

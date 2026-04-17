@@ -642,6 +642,14 @@ Route::post('v1/nha-tuyen-dung/cong-ty/thanh-viens', [NhaTuyenDungCongTyControll
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner'])
     ->name('nha-tuyen-dung.cong-ty.members.store');
 
+Route::post('v1/nha-tuyen-dung/cong-ty/loi-mois', [NhaTuyenDungCongTyController::class, 'sendInvitation'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner'])
+    ->name('nha-tuyen-dung.cong-ty.invitations.store');
+
+Route::delete('v1/nha-tuyen-dung/cong-ty/loi-mois/{inviteId}', [NhaTuyenDungCongTyController::class, 'cancelInvitation'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner'])
+    ->name('nha-tuyen-dung.cong-ty.invitations.destroy');
+
 Route::patch('v1/nha-tuyen-dung/cong-ty/thanh-viens/{memberId}/vai-tro', [NhaTuyenDungCongTyController::class, 'updateMemberRole'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner'])
     ->name('nha-tuyen-dung.cong-ty.members.update-role');
@@ -649,6 +657,18 @@ Route::patch('v1/nha-tuyen-dung/cong-ty/thanh-viens/{memberId}/vai-tro', [NhaTuy
 Route::delete('v1/nha-tuyen-dung/cong-ty/thanh-viens/{memberId}', [NhaTuyenDungCongTyController::class, 'removeMember'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner'])
     ->name('nha-tuyen-dung.cong-ty.members.destroy');
+
+Route::get('v1/nha-tuyen-dung/cong-ty/hr-audit-logs', [NhaTuyenDungCongTyController::class, 'hrAuditLogs'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
+    ->name('nha-tuyen-dung.cong-ty.hr-audit-logs.index');
+
+Route::get('v1/nha-tuyen-dung/loi-moi-cong-ty/da-nhan', [NhaTuyenDungCongTyController::class, 'receivedInvitations'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.cong-ty.invitations.received');
+
+Route::post('v1/nha-tuyen-dung/loi-moi-cong-ty/{inviteId}/phan-hoi', [NhaTuyenDungCongTyController::class, 'respondToInvitation'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
+    ->name('nha-tuyen-dung.cong-ty.invitations.respond');
 
 // ============================================================
 // NHÓM 17: NHÀ TUYỂN DỤNG — Quản lý tin tuyển dụng (vai_tro = 1)

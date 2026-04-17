@@ -58,6 +58,10 @@ const companyLetter = computed(() => companyLabel.value.trim().charAt(0).toUpper
         <span class="material-symbols-outlined">domain</span>
         <span v-if="!collapsed" class="text-sm">Công ty</span>
       </RouterLink>
+      <RouterLink to="/employer/hr-management" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Nhân sự HR' : ''">
+        <span class="material-symbols-outlined">groups</span>
+        <span v-if="!collapsed" class="text-sm">Nhân sự HR</span>
+      </RouterLink>
     </nav>
   </aside>
 </template>

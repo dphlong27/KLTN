@@ -7,7 +7,14 @@ import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
 
 const notify = useNotify()
-const { canManageJobs, currentInternalRoleLabel, assignableMembers, ensurePermissionsLoaded } = useEmployerCompanyPermissions()
+const {
+  canManageJobs,
+  currentInternalRoleLabel,
+  assignableMembers,
+  ensurePermissionsLoaded,
+  currentEmployerId,
+  canManageAllAssignments,
+} = useEmployerCompanyPermissions()
 
 const loading = ref(false)
 const saving = ref(false)
@@ -238,6 +245,13 @@ const getAcceptedCount = (job) => Number(job?.so_luong_da_nhan || 0)
 const getRemainingSlots = (job) => Number(job?.so_luong_con_lai || Math.max(Number(job?.so_luong_tuyen || 0) - getAcceptedCount(job), 0))
 const isQuotaFull = (job) => Boolean(job?.da_tuyen_du) || (Number(job?.so_luong_tuyen || 0) > 0 && getRemainingSlots(job) <= 0)
 const canDeleteJob = (job) => getSubmittedApplicationCount(job) === 0
+const isOwnedJob = (job) => Number(job?.hr_phu_trach?.id || job?.hr_phu_trach_id || 0) === Number(currentEmployerId.value || 0)
+const canMutateJob = (job) => Boolean(canManageJobs.value && (canManageAllAssignments.value || isOwnedJob(job)))
+const ownershipHint = computed(() =>
+  canManageJobs.value && !canManageAllAssignments.value
+    ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể thao tác trên các tin tuyển dụng mình phụ trách.`
+    : ''
+)
 
 const syncTabWithFilter = () => {
   filters.trang_thai = activeTab.value
@@ -285,8 +299,10 @@ const openCreateModal = () => {
 }
 
 const openEditModal = (job) => {
-  if (!canManageJobs.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể chỉnh sửa tin tuyển dụng.`)
+  if (!canMutateJob(job)) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể chỉnh sửa các tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể chỉnh sửa tin tuyển dụng.`)
     return
   }
   editingJobId.value = job.id
@@ -312,8 +328,10 @@ const closeModal = () => {
 }
 
 const openDeleteModal = (job) => {
-  if (!canManageJobs.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể xóa tin tuyển dụng.`)
+  if (!canMutateJob(job)) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể xóa các tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể xóa tin tuyển dụng.`)
     return
   }
   if (!canDeleteJob(job)) {
@@ -407,8 +425,10 @@ const submitJobForm = async () => {
 }
 
 const toggleJobStatus = async (job) => {
-  if (!canManageJobs.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
+  if (!canMutateJob(job)) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể đổi trạng thái các tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể đổi trạng thái tin tuyển dụng.`)
     return
   }
 
@@ -422,8 +442,10 @@ const toggleJobStatus = async (job) => {
 }
 
 const deleteJob = async (job) => {
-  if (!canManageJobs.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể xóa tin tuyển dụng.`)
+  if (!canMutateJob(job)) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể xóa các tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể xóa tin tuyển dụng.`)
     return
   }
 
@@ -438,8 +460,10 @@ const deleteJob = async (job) => {
 }
 
 const parseJob = async (job) => {
-  if (!canManageJobs.value) {
-    notify.warning(`Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
+  if (!canMutateJob(job)) {
+    notify.warning(canManageJobs.value
+      ? 'Bạn chỉ có thể parse JD cho các tin tuyển dụng mình phụ trách.'
+      : `Vai trò ${currentInternalRoleLabel.value} không thể parse JD cho tin tuyển dụng.`)
     return
   }
 
@@ -520,6 +544,12 @@ watch(expiryDate, (value) => {
         class="mb-6 rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
       >
         Bạn đang đăng nhập với vai trò <span class="font-bold">{{ currentInternalRoleLabel }}</span>. Màn này đang ở chế độ chỉ xem, các thao tác tạo và cập nhật tin tuyển dụng đã bị khóa.
+      </div>
+      <div
+        v-else-if="ownershipHint"
+        class="mb-6 rounded-2xl border border-blue-200 bg-blue-50 px-5 py-4 text-sm text-blue-700 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-200"
+      >
+        {{ ownershipHint }}
       </div>
 
       <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -626,6 +656,12 @@ watch(expiryDate, (value) => {
                       HR phụ trách: {{ job.hr_phu_trach?.ho_ten || 'Chưa gán' }}
                     </span>
                     <span
+                      v-if="canManageJobs && !canManageAllAssignments && !isOwnedJob(job)"
+                      class="mt-2 inline-flex w-fit rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-semibold text-amber-300"
+                    >
+                      Không thuộc phần việc của bạn
+                    </span>
+                    <span
                       class="mt-2 inline-flex w-fit rounded-full px-2.5 py-1 text-[11px] font-semibold"
                       :class="isQuotaFull(job) ? 'bg-rose-500/10 text-rose-300' : 'bg-emerald-500/10 text-emerald-300'"
                     >
@@ -667,7 +703,7 @@ watch(expiryDate, (value) => {
                     </RouterLink>
                     <button
                       class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-[#2463eb]/10 hover:text-[#2463eb] disabled:cursor-not-allowed disabled:opacity-50"
-                      :disabled="!canManageJobs"
+                      :disabled="!canMutateJob(job)"
                       title="Sửa tin"
                       type="button"
                       @click="openEditModal(job)"
@@ -676,7 +712,7 @@ watch(expiryDate, (value) => {
                     </button>
                     <button
                       class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-violet-500/10 hover:text-violet-300 disabled:cursor-not-allowed disabled:opacity-50"
-                      :disabled="!canManageJobs"
+                      :disabled="!canMutateJob(job)"
                       title="Parse JD"
                       type="button"
                       @click="parseJob(job)"
@@ -685,7 +721,7 @@ watch(expiryDate, (value) => {
                     </button>
                     <button
                       class="flex size-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-amber-500/10 hover:text-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
-                      :disabled="!canManageJobs"
+                      :disabled="!canMutateJob(job)"
                       :title="Number(job.trang_thai) === 1 ? 'Tạm ngưng tin' : 'Bật lại tin'"
                       type="button"
                       @click="toggleJobStatus(job)"
@@ -699,7 +735,7 @@ watch(expiryDate, (value) => {
                       :class="canDeleteJob(job)
                         ? 'text-slate-400 hover:bg-red-500/10 hover:text-red-400'
                         : 'text-slate-300/80 hover:bg-amber-500/10 hover:text-amber-400 dark:text-slate-600 dark:hover:text-amber-300'"
-                      :disabled="!canManageJobs"
+                      :disabled="!canMutateJob(job)"
                       :title="canDeleteJob(job) ? 'Xóa tin' : `Tin đã có ${getSubmittedApplicationCount(job)} ứng tuyển, hãy tạm ngưng thay vì xóa`"
                       type="button"
                       @click="openDeleteModal(job)"
@@ -856,12 +892,19 @@ watch(expiryDate, (value) => {
 
           <label class="block">
             <span class="mb-2 block text-sm font-semibold text-slate-300">HR phụ trách</span>
-            <select v-model="jobForm.hr_phu_trach_id" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]">
+            <select
+              v-model="jobForm.hr_phu_trach_id"
+              :disabled="!canManageAllAssignments"
+              class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb] disabled:cursor-not-allowed disabled:opacity-60"
+            >
               <option value="">Tự gán theo người thao tác</option>
               <option v-for="member in assignableMembers" :key="member.id" :value="String(member.id)">
                 {{ member.label }}
               </option>
             </select>
+            <p v-if="!canManageAllAssignments" class="mt-2 text-xs text-slate-400">
+              Với vai trò {{ currentInternalRoleLabel }}, tin tuyển dụng mới hoặc chỉnh sửa sẽ luôn gắn cho chính bạn.
+            </p>
           </label>
 
           <div class="md:col-span-2">
