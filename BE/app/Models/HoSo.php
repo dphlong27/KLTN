@@ -29,6 +29,8 @@ class HoSo extends Model
         'file_cv',
         'nguon_ho_so',
         'mau_cv',
+        'bo_cuc_cv',
+        'ten_template_cv',
         'che_do_mau_cv',
         'vi_tri_ung_tuyen_muc_tieu',
         'ten_nganh_nghe_muc_tieu',

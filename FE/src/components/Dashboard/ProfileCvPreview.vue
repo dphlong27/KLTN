@@ -6,7 +6,7 @@ import {
   formatCvPeriod,
   getCvTemplateTheme,
   resolveProfileCvAvatarUrl,
-  resolveCvTemplateValue,
+  resolveCvTemplateLayout,
 } from '@/utils/profileCvBuilder'
 
 const props = defineProps({
@@ -34,7 +34,9 @@ const degreeOptions = {
   khac: 'Khác',
 }
 
-const template = computed(() => resolveCvTemplateValue(props.profile?.mau_cv || 'executive_navy'))
+const template = computed(() =>
+  resolveCvTemplateLayout(props.profile?.mau_cv || 'executive_navy', props.profile?.bo_cuc_cv || ''),
+)
 const theme = computed(() => getCvTemplateTheme(template.value))
 const fullName = computed(() => props.owner?.ho_ten || 'Ứng viên')
 const email = computed(() => props.owner?.email || 'Chưa cập nhật email')
@@ -67,7 +69,7 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
 </script>
 
 <template>
-  <div class="overflow-hidden bg-white shadow-sm" :style="{ color: theme.text }">
+  <div class="cv-preview-root overflow-hidden bg-white shadow-sm" :style="{ color: theme.text }">
     <template v-if="template === 'executive_navy'">
       <div class="bg-[#2f3557] px-6 py-7 text-center text-[#d7bd79] md:px-10">
         <h3 class="text-3xl font-medium uppercase tracking-[0.22em] md:text-4xl">{{ fullName }}</h3>
@@ -77,8 +79,8 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
         <p class="mt-4 text-xs font-semibold uppercase tracking-[0.3em] md:text-sm">{{ title }}</p>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
-        <aside class="border-r border-slate-200 px-6 py-6">
+      <div class="cv-preview-grid-navy grid grid-cols-1 md:grid-cols-[280px_minmax(0,1fr)]">
+        <aside class="cv-preview-sidebar border-r border-slate-200 px-6 py-6">
           <section class="mb-6">
             <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Liên lạc</h4>
             <div class="mt-3 h-px bg-slate-200" />
@@ -132,7 +134,7 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
           </section>
         </aside>
 
-        <main class="px-6 py-6 md:px-8">
+        <main class="cv-preview-content px-6 py-6 md:px-8">
           <section class="mb-7">
             <h4 class="text-xs font-bold uppercase tracking-[0.24em] text-slate-600">Giới thiệu</h4>
             <div class="mt-3 h-px bg-slate-200" />
@@ -171,8 +173,8 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
     </template>
 
     <template v-else-if="template === 'topcv_maroon'">
-      <div class="grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
-        <aside class="bg-[#5b3133] text-white">
+      <div class="cv-preview-grid-maroon grid grid-cols-1 md:grid-cols-[320px_minmax(0,1fr)]">
+        <aside class="cv-preview-sidebar bg-[#5b3133] text-white">
           <div class="bg-[#a45a5d] px-6 py-7 text-center">
             <div class="mx-auto flex h-52 w-52 items-center justify-center overflow-hidden rounded-full border-4 border-white bg-white text-5xl font-bold text-[#5b3133]">
               <img v-if="avatarUrl" :src="avatarUrl" alt="avatar" class="h-full w-full object-cover" />
@@ -225,7 +227,7 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
           </div>
         </aside>
 
-        <main class="bg-white px-8 py-8">
+        <main class="cv-preview-content bg-white px-8 py-8">
           <section class="mb-8">
             <h4 class="text-2xl font-bold text-slate-900">Học vấn</h4>
             <div v-if="educations.length" class="mt-4 space-y-5">
@@ -269,7 +271,7 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
     </template>
 
     <template v-else>
-      <div class="px-8 py-10 md:px-12">
+      <div class="cv-preview-ats px-8 py-10 md:px-12">
         <header>
           <h3 class="text-[40px] font-bold leading-none text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ fullName }}</h3>
           <p class="mt-3 text-xl text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">
@@ -339,3 +341,30 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
     </template>
   </div>
 </template>
+
+<style scoped>
+@media print {
+  .cv-preview-root,
+  .cv-preview-root * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .cv-preview-grid-navy {
+    display: grid !important;
+    grid-template-columns: 280px minmax(0, 1fr) !important;
+  }
+
+  .cv-preview-grid-maroon {
+    display: grid !important;
+    grid-template-columns: 320px minmax(0, 1fr) !important;
+  }
+
+  .cv-preview-sidebar,
+  .cv-preview-content,
+  .cv-preview-ats {
+    break-inside: avoid-page;
+    page-break-inside: avoid;
+  }
+}
+</style>

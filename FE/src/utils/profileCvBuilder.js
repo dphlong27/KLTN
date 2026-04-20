@@ -1,23 +1,48 @@
-export const cvTemplateOptions = [
+const defaultCvTemplateOptions = [
   {
     value: 'executive_navy',
     label: 'Executive Navy',
     description: 'Bám theo mẫu header xanh đậm, tên căn giữa, sidebar trái và phần kinh nghiệm chi tiết.',
+    layout: 'executive_navy',
     badges: ['Hợp Product / Business', 'Hợp HR / Finance'],
   },
   {
     value: 'topcv_maroon',
     label: 'Sidebar Maroon',
     description: 'Bám theo mẫu sidebar đỏ nâu có ảnh đại diện lớn, cột trái đậm màu và nội dung trắng bên phải.',
+    layout: 'topcv_maroon',
     badges: ['Hợp Frontend / Mobile', 'Hợp Marketing / UI UX'],
   },
   {
     value: 'ats_serif',
     label: 'ATS Serif',
     description: 'Bám theo mẫu ATS trắng tối giản, chữ serif, một cột, ưu tiên đọc nhanh và in đẹp.',
+    layout: 'ats_serif',
     badges: ['Hợp ATS / Software', 'Hợp Data / Intern'],
   },
 ]
+
+let runtimeCvTemplateOptions = [...defaultCvTemplateOptions]
+
+export const getCvTemplateOptions = () => runtimeCvTemplateOptions
+
+export const setRuntimeCvTemplateOptions = (templates = []) => {
+  if (!Array.isArray(templates) || !templates.length) {
+    runtimeCvTemplateOptions = [...defaultCvTemplateOptions]
+    return
+  }
+
+  runtimeCvTemplateOptions = templates.map((template) => ({
+    value: template.ma_template || template.value,
+    label: template.ten_template || template.label,
+    description: template.mo_ta || template.description || '',
+    layout: template.bo_cuc || template.layout || template.value,
+    badges: Array.isArray(template.badges) ? template.badges : [],
+    order: Number(template.thu_tu_hien_thi || template.order || 0),
+  })).sort((a, b) => (a.order || 0) - (b.order || 0))
+}
+
+export const cvTemplateOptions = defaultCvTemplateOptions
 
 export const cvTemplateModeOptions = [
   { value: 'style', label: 'Theo phong cách', description: 'Chọn trực tiếp phong cách CV bám theo các mẫu tham chiếu.' },
@@ -105,6 +130,20 @@ export const resolveCvTemplateValue = (value) => {
   return TEMPLATE_ALIAS_MAP[normalized] || normalized
 }
 
+export const resolveCvTemplateLayout = (value, fallbackLayout = '') => {
+  const catalogEntry = getCvTemplateOptions().find((item) => item.value === String(value || '').trim())
+  if (catalogEntry?.layout) {
+    return catalogEntry.layout
+  }
+
+  const fallback = String(fallbackLayout || '').trim()
+  if (fallback) {
+    return TEMPLATE_ALIAS_MAP[fallback] || fallback
+  }
+
+  return resolveCvTemplateValue(value)
+}
+
 export const hasBuilderCv = (profile) => {
   if (!profile) return false
   if (profile.nguon_ho_so && profile.nguon_ho_so !== 'upload') return true
@@ -119,11 +158,70 @@ export const hasBuilderCv = (profile) => {
 }
 
 export const cvTemplateLabel = (value) =>
-  cvTemplateOptions.find((item) => item.value === resolveCvTemplateValue(value))?.label || 'Executive Navy'
+  getCvTemplateOptions().find((item) => item.value === String(value || '').trim())?.label
+  || defaultCvTemplateOptions.find((item) => item.value === resolveCvTemplateValue(value))?.label
+  || 'Executive Navy'
+
+export const getCvTemplateMeta = (value) =>
+  getCvTemplateOptions().find((item) => item.value === String(value || '').trim())
+  || defaultCvTemplateOptions.find((item) => item.value === resolveCvTemplateValue(value))
+  || null
 
 export const inferCvStyleFamily = (template) => resolveCvTemplateValue(template)
 
-export const getCvTemplatesForMode = () => cvTemplateOptions
+export const getCvTemplatesForMode = () => getCvTemplateOptions()
+
+const CV_PRINT_STORAGE_PREFIX = 'cv-print-preview:'
+
+export const storeCvPrintPayload = ({ profile, owner }) => {
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+
+  if (typeof window !== 'undefined') {
+    window.localStorage.setItem(
+      `${CV_PRINT_STORAGE_PREFIX}${token}`,
+      JSON.stringify({
+        profile,
+        owner,
+        created_at: new Date().toISOString(),
+      }),
+    )
+  }
+
+  return token
+}
+
+export const readCvPrintPayload = (token) => {
+  if (typeof window === 'undefined' || !token) return null
+
+  const raw = window.localStorage.getItem(`${CV_PRINT_STORAGE_PREFIX}${token}`)
+  if (!raw) return null
+
+  try {
+    return JSON.parse(raw)
+  } catch (error) {
+    return null
+  }
+}
+
+export const clearCvPrintPayload = (token) => {
+  if (typeof window === 'undefined' || !token) return
+  window.localStorage.removeItem(`${CV_PRINT_STORAGE_PREFIX}${token}`)
+}
+
+export const openCvPrintPreview = ({ profile, owner }) => {
+  if (typeof window === 'undefined') return false
+
+  const popup = window.open('about:blank', '_blank')
+  if (!popup) {
+    return false
+  }
+
+  const token = storeCvPrintPayload({ profile, owner })
+  popup.name = JSON.stringify({ profile, owner, token })
+  popup.location.href = `/cv-print-preview?token=${encodeURIComponent(token)}`
+
+  return true
+}
 
 const cvTemplateThemes = {
   executive_navy: {

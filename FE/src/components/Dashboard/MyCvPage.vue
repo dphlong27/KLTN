@@ -4,7 +4,7 @@ import { authService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate, updateStoredCandidate } from '@/utils/authStorage'
 import { formatDateVN } from '@/utils/dateTime'
-import { hasBuilderCv } from '@/utils/profileCvBuilder'
+import { hasBuilderCv, openCvPrintPreview } from '@/utils/profileCvBuilder'
 
 const notify = useNotify()
 
@@ -269,6 +269,17 @@ const openEditModal = (profile) => {
 const openDetailModal = (profile) => {
   selectedProfileDetail.value = profile
   detailModalOpen.value = true
+}
+
+const downloadBuilderProfile = (profile) => {
+  const opened = openCvPrintPreview({
+    profile,
+    owner: currentCandidate.value,
+  })
+
+  if (!opened) {
+    notify.warning('Trình duyệt đang chặn cửa sổ tải xuống. Hãy cho phép popup và thử lại.')
+  }
 }
 
 const closeDetailModal = () => {
@@ -590,15 +601,14 @@ onMounted(fetchProfiles)
           </div>
 
           <div class="flex flex-wrap items-center gap-2 shrink-0">
-            <a
-              v-if="profile.file_cv"
-              :href="cvFileUrl(profile.file_cv)"
+            <button
+              v-if="hasBuilderCv(profile)"
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              target="_blank"
-              rel="noopener noreferrer"
+              type="button"
+              @click="downloadBuilderProfile(profile)"
             >
-              <span class="material-symbols-outlined text-[18px]">download</span> Tải xuống
-            </a>
+              <span class="material-symbols-outlined text-[18px]">picture_as_pdf</span> Tải PDF
+            </button>
             <button
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
               :class="statusMeta(profile.trang_thai).actionClass"
@@ -846,17 +856,16 @@ onMounted(fetchProfiles)
             <div class="rounded-2xl border border-slate-200 px-4 py-4">
               <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">File CV</p>
               <div class="mt-3">
-                <a
-                  v-if="selectedProfileDetail.file_cv"
-                  :href="cvFileUrl(selectedProfileDetail.file_cv)"
+                <button
+                  v-if="hasBuilderCv(selectedProfileDetail)"
                   class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb]/10 px-4 py-2.5 text-sm font-semibold text-[#2463eb] transition hover:bg-[#2463eb] hover:text-white"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  type="button"
+                  @click="downloadBuilderProfile(selectedProfileDetail)"
                 >
-                  <span class="material-symbols-outlined text-[18px]">download</span>
-                  Tải xuống CV
-                </a>
-                <p v-else class="text-sm text-slate-500">Hồ sơ này chưa có file CV.</p>
+                  <span class="material-symbols-outlined text-[18px]">picture_as_pdf</span>
+                  Tải PDF
+                </button>
+                <p v-else class="text-sm text-slate-500">Hồ sơ này không hỗ trợ tải xuống trực tiếp.</p>
               </div>
             </div>
           </div>

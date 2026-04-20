@@ -1,23 +1,25 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { jobService, profileService } from '@/services/api'
+import { cvTemplateService, jobService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate } from '@/utils/authStorage'
 import ProfileCvPreview from '@/components/Dashboard/ProfileCvPreview.vue'
+import MonthYearPicker from '@/components/MonthYearPicker.vue'
 import {
   buildCvPresetByMode,
-  buildProfileCvPrintHtml,
   cvStyleFamilyOptions,
   cvSkillLevelOptions,
   cvTargetPositionOptions,
   cvTemplateModeOptions,
   cvStylePreferenceOptions,
+  getCvTemplateMeta,
   cvTemplateLabel,
-  cvTemplateOptions,
   getCvTemplatesForMode,
   inferCvStyleFamily,
+  openCvPrintPreview,
   resolveProfileCvAvatarUrl,
+  setRuntimeCvTemplateOptions,
   suggestCvTemplateByMode,
 } from '@/utils/profileCvBuilder'
 
@@ -28,6 +30,7 @@ const notify = useNotify()
 const loading = ref(false)
 const saving = ref(false)
 const loadingIndustries = ref(false)
+const loadingTemplates = ref(false)
 const previewModalOpen = ref(false)
 const currentCandidate = ref(getStoredCandidate())
 const industryOptions = ref([])
@@ -62,6 +65,8 @@ const form = reactive({
   mo_ta_ban_than: '',
   nguon_ho_so: 'builder',
   mau_cv: 'executive_navy',
+  bo_cuc_cv: 'executive_navy',
+  ten_template_cv: 'Executive Navy',
   che_do_mau_cv: 'style',
   vi_tri_ung_tuyen_muc_tieu: '',
   ten_nganh_nghe_muc_tieu: '',
@@ -129,6 +134,9 @@ const recommendedTemplate = computed(() => suggestCvTemplateByMode({
   positionValue: targetPosition.value,
   preference: stylePreference.value,
 }))
+const selectedTemplateMeta = computed(() =>
+  getCvTemplateMeta(form.mau_cv) || getCvTemplateMeta(recommendedTemplate.value),
+)
 const candidateAvatarUrl = computed(() =>
   currentCandidate.value?.avatar_url ||
   currentCandidate.value?.anh_dai_dien_url ||
@@ -145,6 +153,8 @@ const cvPhotoPreviewUrl = computed(() => {
 const availableTemplates = computed(() => getCvTemplatesForMode(templateMode.value, styleFamily.value))
 const previewProfile = computed(() => ({
   ...form,
+  bo_cuc_cv: selectedTemplateMeta.value?.layout || form.bo_cuc_cv || 'executive_navy',
+  ten_template_cv: selectedTemplateMeta.value?.label || form.ten_template_cv || cvTemplateLabel(form.mau_cv),
   che_do_mau_cv: templateMode.value,
   vi_tri_ung_tuyen_muc_tieu: targetPosition.value,
   ten_nganh_nghe_muc_tieu: selectedIndustryName.value,
@@ -216,6 +226,8 @@ const resetForm = () => {
   form.mo_ta_ban_than = ''
   form.nguon_ho_so = 'builder'
   form.mau_cv = 'executive_navy'
+  form.bo_cuc_cv = 'executive_navy'
+  form.ten_template_cv = 'Executive Navy'
   form.che_do_mau_cv = 'style'
   form.vi_tri_ung_tuyen_muc_tieu = ''
   form.ten_nganh_nghe_muc_tieu = ''
@@ -247,6 +259,8 @@ const fillForm = (profile) => {
   form.mo_ta_ban_than = profile?.mo_ta_ban_than || ''
   form.nguon_ho_so = 'builder'
   form.mau_cv = profile?.mau_cv || 'executive_navy'
+  form.bo_cuc_cv = profile?.bo_cuc_cv || getCvTemplateMeta(profile?.mau_cv || 'executive_navy')?.layout || 'executive_navy'
+  form.ten_template_cv = profile?.ten_template_cv || cvTemplateLabel(profile?.mau_cv || 'executive_navy')
   form.che_do_mau_cv = profile?.che_do_mau_cv || 'style'
   form.vi_tri_ung_tuyen_muc_tieu = profile?.vi_tri_ung_tuyen_muc_tieu || ''
   form.ten_nganh_nghe_muc_tieu = profile?.ten_nganh_nghe_muc_tieu || ''
@@ -310,6 +324,21 @@ const loadIndustries = async () => {
     notify.apiError(error, 'Không thể tải danh sách ngành nghề cho CV builder.')
   } finally {
     loadingIndustries.value = false
+  }
+}
+
+const loadTemplates = async () => {
+  loadingTemplates.value = true
+  try {
+    const response = await cvTemplateService.getActiveTemplates()
+    const payload = response?.data
+    const templates = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : []
+    setRuntimeCvTemplateOptions(templates)
+  } catch (error) {
+    setRuntimeCvTemplateOptions([])
+    notify.apiError(error, 'Không thể tải danh sách template CV. Hệ thống sẽ dùng bộ template mặc định.')
+  } finally {
+    loadingTemplates.value = false
   }
 }
 
@@ -400,15 +429,15 @@ const applyTemplatePreset = () => {
 }
 
 const exportPreview = () => {
-  const popup = window.open('', '_blank', 'noopener,noreferrer')
-  if (!popup) {
-    notify.warning('Trình duyệt đang chặn cửa sổ in. Hãy cho phép popup và thử lại.')
+  const opened = openCvPrintPreview({
+    profile: previewProfile.value,
+    owner: currentCandidate.value,
+  })
+
+  if (!opened) {
+    notify.warning('Trình duyệt đang chặn cửa sổ tải xuống. Hãy cho phép popup và thử lại.')
     return
   }
-
-  popup.document.open()
-  popup.document.write(buildProfileCvPrintHtml({ profile: previewProfile.value, owner: currentCandidate.value }))
-  popup.document.close()
 }
 
 const openPreviewModal = () => {
@@ -428,6 +457,8 @@ const buildFormData = () => {
   payload.append('mo_ta_ban_than', form.mo_ta_ban_than || '')
   payload.append('nguon_ho_so', 'builder')
   payload.append('mau_cv', form.mau_cv || 'executive_navy')
+  payload.append('bo_cuc_cv', selectedTemplateMeta.value?.layout || form.bo_cuc_cv || 'executive_navy')
+  payload.append('ten_template_cv', selectedTemplateMeta.value?.label || form.ten_template_cv || cvTemplateLabel(form.mau_cv))
   payload.append('che_do_mau_cv', templateMode.value)
   payload.append('vi_tri_ung_tuyen_muc_tieu', targetPosition.value || '')
   payload.append('ten_nganh_nghe_muc_tieu', selectedIndustryName.value || '')
@@ -522,7 +553,19 @@ watch([styleFamily, targetPosition, selectedIndustryId], () => {
   }
 })
 
+watch(
+  () => form.mau_cv,
+  (value) => {
+    const meta = getCvTemplateMeta(value)
+    if (!meta) return
+    form.bo_cuc_cv = meta.layout || form.bo_cuc_cv || 'executive_navy'
+    form.ten_template_cv = meta.label || form.ten_template_cv || 'Executive Navy'
+  },
+  { immediate: true },
+)
+
 onMounted(async () => {
+  await loadTemplates()
   await loadIndustries()
 })
 
@@ -559,7 +602,7 @@ onBeforeUnmount(() => {
           @click="exportPreview"
         >
           <span class="material-symbols-outlined text-[18px]">print</span>
-          In / Xuất PDF
+          Tải PDF
         </button>
       </div>
     </div>
@@ -736,7 +779,7 @@ onBeforeUnmount(() => {
               <div>
                 <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Template đang dùng</label>
                 <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100">
-                  {{ cvTemplateLabel(form.mau_cv) }}
+                  {{ form.ten_template_cv || cvTemplateLabel(form.mau_cv) }}
                 </div>
               </div>
 
@@ -916,8 +959,8 @@ onBeforeUnmount(() => {
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <input v-model="item.vi_tri" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Vị trí" type="text" />
                   <input v-model="item.cong_ty" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Công ty" type="text" />
-                  <input v-model="item.bat_dau" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Bắt đầu (MM/YYYY)" type="text" />
-                  <input v-model="item.ket_thuc" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Kết thúc / Hiện tại" type="text" />
+                  <MonthYearPicker v-model="item.bat_dau" placeholder="Bắt đầu (MM/YYYY)" />
+                  <MonthYearPicker v-model="item.ket_thuc" placeholder="Kết thúc" allow-present present-label="Hiện tại" />
                   <textarea v-model="item.mo_ta" rows="3" class="md:col-span-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Mô tả ngắn các đầu việc, thành tựu hoặc tác động nổi bật." />
                 </div>
                 <div class="mt-3 flex justify-end">
@@ -945,8 +988,8 @@ onBeforeUnmount(() => {
                 <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <input v-model="item.truong" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Trường học" type="text" />
                   <input v-model="item.chuyen_nganh" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Chuyên ngành" type="text" />
-                  <input v-model="item.bat_dau" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Bắt đầu (MM/YYYY)" type="text" />
-                  <input v-model="item.ket_thuc" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Kết thúc" type="text" />
+                  <MonthYearPicker v-model="item.bat_dau" placeholder="Bắt đầu (MM/YYYY)" />
+                  <MonthYearPicker v-model="item.ket_thuc" placeholder="Kết thúc" />
                   <textarea v-model="item.mo_ta" rows="3" class="md:col-span-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Điểm nổi bật, GPA, hoạt động học thuật..." />
                 </div>
                 <div class="mt-3 flex justify-end">
@@ -1039,7 +1082,7 @@ onBeforeUnmount(() => {
                   @click="exportPreview"
                 >
                   <span class="material-symbols-outlined text-[18px]">print</span>
-                  In / Xuất PDF
+                  Tải PDF
                 </button>
               </div>
             </div>
@@ -1187,7 +1230,7 @@ onBeforeUnmount(() => {
             type="button"
             @click="exportPreview"
           >
-            In / Xuất PDF
+            Tải PDF
           </button>
         </div>
       </div>
@@ -1209,7 +1252,7 @@ onBeforeUnmount(() => {
           @click="exportPreview"
         >
           <span class="material-symbols-outlined text-[18px]">print</span>
-          In PDF
+          Tải PDF
         </button>
       </div>
     </div>

@@ -762,6 +762,49 @@ export const adminCareerAdvisingService = {
   },
 }
 
+export const cvTemplateService = {
+  getActiveTemplates: () =>
+    apiCall('/cv-templates', {
+      method: 'GET',
+    }),
+}
+
+export const adminCvTemplateService = {
+  getTemplates: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.search) params.append('search', options.search)
+
+    const query = params.toString()
+    return apiCall(`/admin/cv-templates${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  createTemplate: (data) =>
+    apiCall('/admin/cv-templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateTemplate: (id, data) =>
+    apiCall(`/admin/cv-templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  toggleTemplateStatus: (id) =>
+    apiCall(`/admin/cv-templates/${id}/trang-thai`, {
+      method: 'PATCH',
+    }),
+
+  deleteTemplate: (id) =>
+    apiCall(`/admin/cv-templates/${id}`, {
+      method: 'DELETE',
+    }),
+}
+
 // === Employer APIs ===
 export const employerCompanyService = {
   getCompany: () =>

@@ -47,6 +47,8 @@ class TaoHoSoRequest extends FormRequest
             'file_cv' => ['nullable', 'file', 'mimes:pdf,doc,docx', 'max:5120'],
             'nguon_ho_so' => ['nullable', 'string', 'in:upload,builder,hybrid'],
             'mau_cv' => ['nullable', 'string', 'max:100'],
+            'bo_cuc_cv' => ['nullable', 'string', 'in:executive_navy,topcv_maroon,ats_serif'],
+            'ten_template_cv' => ['nullable', 'string', 'max:150'],
             'che_do_mau_cv' => ['nullable', 'string', 'in:style,position'],
             'vi_tri_ung_tuyen_muc_tieu' => ['nullable', 'string', 'max:150'],
             'ten_nganh_nghe_muc_tieu' => ['nullable', 'string', 'max:150'],

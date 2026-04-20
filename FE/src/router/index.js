@@ -163,6 +163,12 @@ const routes = [
     meta: { layout: 'cv-builder', requiresAuth: true, role: ROLE_CANDIDATE, pageTitle: 'Tạo CV trên hệ thống' }
   },
   {
+    path: '/cv-print-preview',
+    name: 'CvPrintPreview',
+    component: () => import('@/components/Dashboard/CvPrintPreviewPage.vue'),
+    meta: { layout: 'plain', pageTitle: 'Xuất CV' }
+  },
+  {
     path: '/my-skills',
     name: 'MySkills',
     component: () => import('@/components/Dashboard/MySkillsPage.vue'),
@@ -336,6 +342,12 @@ const routes = [
     path: '/admin/jobs',
     name: 'JobPostingsManagement',
     component: () => import('@/components/Admin/JobPostingsManagementPage.vue'),
+    meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN }
+  },
+  {
+    path: '/admin/cv-templates',
+    name: 'CvTemplateManagement',
+    component: () => import('@/components/Admin/CvTemplateManagementPage.vue'),
     meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN }
   },
   {

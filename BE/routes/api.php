@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\MatchingController;
 use App\Http\Controllers\Api\CoverLetterController;
 use App\Http\Controllers\Api\CareerReportController;
 use App\Http\Controllers\Api\SemanticSearchController;
+use App\Http\Controllers\Api\CvTemplateController;
 use App\Http\Controllers\Api\AiChatSessionController;
 use App\Http\Controllers\Api\AiChatMessageController;
 use App\Http\Controllers\Api\MockInterviewController;
@@ -426,6 +427,9 @@ Route::get('v1/ky-nangs', [KyNangController::class, 'index'])
 Route::get('v1/ky-nangs/{id}', [KyNangController::class, 'show'])
     ->name('ky-nangs.show');
 
+Route::get('v1/cv-templates', [CvTemplateController::class, 'publicIndex'])
+    ->name('cv-templates.index');
+
 
 // ============================================================
 // NHÓM 10: ADMIN — Quản lý kỹ năng (vai_tro = 2)
@@ -791,6 +795,31 @@ Route::patch('v1/admin/tin-tuyen-dungs/{id}/trang-thai', [AdminTinTuyenDungContr
 Route::delete('v1/admin/tin-tuyen-dungs/{id}', [AdminTinTuyenDungController::class, 'destroy'])
     ->middleware(['auth:sanctum', 'role:admin'])
     ->name('admin.tin-tuyen-dungs.destroy');
+
+
+// ============================================================
+// NHÓM 19: ADMIN — Quản lý template CV
+// ============================================================
+
+Route::get('v1/admin/cv-templates', [CvTemplateController::class, 'adminIndex'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.cv-templates.index');
+
+Route::post('v1/admin/cv-templates', [CvTemplateController::class, 'store'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.cv-templates.store');
+
+Route::put('v1/admin/cv-templates/{id}', [CvTemplateController::class, 'update'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.cv-templates.update');
+
+Route::patch('v1/admin/cv-templates/{id}/trang-thai', [CvTemplateController::class, 'toggleStatus'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.cv-templates.toggle-status');
+
+Route::delete('v1/admin/cv-templates/{id}', [CvTemplateController::class, 'destroy'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.cv-templates.destroy');
 
 
 // ============================================================
