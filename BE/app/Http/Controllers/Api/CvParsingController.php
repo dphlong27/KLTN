@@ -183,9 +183,12 @@ class CvParsingController extends Controller
                 $parts = array_filter([
                     trim((string) ($item['ten'] ?? '')),
                     trim((string) ($item['vai_tro'] ?? '')),
-                    trim((string) ($item['cong_nghe'] ?? '')),
+                    trim((string) ($item['don_vi_hoac_khach_hang'] ?? '')),
+                    trim((string) ($item['linh_vuc_hoac_cong_cu'] ?? $item['cong_nghe'] ?? '')),
                     trim((string) ($item['mo_ta'] ?? '')),
-                    trim((string) ($item['link'] ?? '')),
+                    trim((string) ($item['ket_qua_noi_bat'] ?? '')),
+                    trim((string) ($item['loai_minh_chung'] ?? '')),
+                    trim((string) ($item['lien_ket_minh_chung'] ?? $item['link'] ?? '')),
                 ]);
                 return $parts === [] ? null : implode(' | ', $parts);
             })

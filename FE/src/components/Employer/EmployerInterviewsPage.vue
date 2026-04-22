@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { employerApplicationService, employerCandidateService, employerJobService } from '@/services/api'
 import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { getAuthToken } from '@/utils/authStorage'
+import { connectPrivateChannel } from '@/services/realtime'
 import { formatDateTimeVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
 import {
   APPLICATION_STATUS,
@@ -14,6 +15,7 @@ import {
 
 const notify = useNotify()
 const {
+  company,
   canProcessApplications,
   currentInternalRoleLabel,
   assignableMembers,
@@ -26,6 +28,8 @@ const {
 const loading = ref(false)
 const saving = ref(false)
 const resendingEmailId = ref(null)
+const copilotGenerating = ref(false)
+const copilotEvaluating = ref(false)
 const applications = ref([])
 const jobs = ref([])
 const pagination = ref(null)
@@ -34,6 +38,10 @@ const selectedApplication = ref(null)
 const candidateDetailOpen = ref(false)
 const candidateDetailLoading = ref(false)
 const candidateDetail = ref(null)
+const notificationTemplates = ref({})
+const copilotSnapshot = ref(null)
+const copilotScores = reactive({})
+let applicationRealtimeChannel = null
 
 const filters = reactive({
   tin_tuyen_dung_id: '',
@@ -82,6 +90,10 @@ const statusOptions = [
   ...APPLICATION_STATUS_OPTIONS,
 ]
 
+const activeTemplate = computed(() => notificationTemplates.value?.[Number(form.trang_thai)] || null)
+const copilotPreInterview = computed(() => copilotSnapshot.value?.pre_interview || null)
+const copilotPostInterview = computed(() => copilotSnapshot.value?.post_interview || null)
+
 const stats = computed(() => {
   const all = applications.value
   const pending = all.filter((item) => Number(item.trang_thai) === APPLICATION_STATUS.PENDING).length
@@ -112,6 +124,13 @@ const stats = computed(() => {
       tone: 'text-violet-300 bg-violet-500/10',
     },
     {
+      label: 'Quá lịch cần cập nhật',
+      value: overdueInterviews.value.length,
+      hint: 'Lịch phỏng vấn đã qua nhưng chưa chốt trúng tuyển hoặc từ chối.',
+      icon: 'notification_important',
+      tone: 'text-rose-300 bg-rose-500/10',
+    },
+    {
       label: 'Trúng tuyển',
       value: hired,
       hint: 'Các hồ sơ đã có kết quả tuyển dụng cuối cùng.',
@@ -128,7 +147,7 @@ const paginationSummary = computed(() => {
 
 const upcomingInterviews = computed(() =>
   applications.value
-    .filter((item) => item.ngay_hen_phong_van)
+    .filter((item) => item.ngay_hen_phong_van && !isInterviewResultOverdue(item))
     .sort((a, b) => new Date(a.ngay_hen_phong_van) - new Date(b.ngay_hen_phong_van))
     .slice(0, 5)
 )
@@ -208,10 +227,29 @@ const canMutateApplication = (application) => Boolean(
   && !application?.da_rut_don
   && (canManageAllAssignments.value || isOwnedApplication(application)),
 )
+const canUseInterviewCopilotFor = (application) => Boolean(
+  canMutateApplication(application)
+  && !isFinalApplicationStatus(application),
+)
+const isInterviewResultOverdue = (application) => {
+  if (!application?.ngay_hen_phong_van || application?.da_rut_don || isFinalApplicationStatus(application)) {
+    return false
+  }
+
+  return Number(application.trang_thai) >= APPLICATION_STATUS.INTERVIEW_SCHEDULED
+    && new Date(application.ngay_hen_phong_van).getTime() < Date.now()
+}
 const ownershipHint = computed(() =>
   canProcessApplications.value && !canManageAllAssignments.value
     ? `Vai trò ${currentInternalRoleLabel.value} chỉ có thể xử lý các đơn ứng tuyển mình phụ trách.`
     : ''
+)
+const canUseSelectedInterviewCopilot = computed(() => canUseInterviewCopilotFor(selectedApplication.value))
+const selectedInterviewOverdue = computed(() => isInterviewResultOverdue(selectedApplication.value))
+const overdueInterviews = computed(() =>
+  applications.value
+    .filter(isInterviewResultOverdue)
+    .sort((a, b) => new Date(a.ngay_hen_phong_van) - new Date(b.ngay_hen_phong_van))
 )
 
 const canResendInterviewEmail = (application) =>
@@ -241,6 +279,15 @@ const fetchJobs = async () => {
   }
 }
 
+const fetchNotificationTemplates = async () => {
+  try {
+    const response = await employerApplicationService.getNotificationTemplates()
+    notificationTemplates.value = response?.data || {}
+  } catch {
+    notificationTemplates.value = {}
+  }
+}
+
 const fetchApplications = async () => {
   loading.value = true
   try {
@@ -255,6 +302,11 @@ const fetchApplications = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const refreshApplicationsRealtime = async () => {
+  if (loading.value) return
+  await fetchApplications()
 }
 
 const applyFilters = async () => {
@@ -294,7 +346,16 @@ const openModal = (application) => {
   form.ket_qua_phong_van = application.ket_qua_phong_van || ''
   form.hr_phu_trach_id = application.hr_phu_trach?.id ? String(application.hr_phu_trach.id) : ''
   form.ghi_chu = application.ghi_chu || ''
+  copilotSnapshot.value = parseCopilotSnapshot(application.rubric_danh_gia_phong_van)
+  resetCopilotScores(copilotPreInterview.value?.rubric || [])
   modalOpen.value = true
+}
+
+const openInterviewCopilotWorkspace = (application) => {
+  openModal(application)
+  if (!canUseInterviewCopilotFor(application) && isFinalApplicationStatus(application)) {
+    notify.info('Đơn đã có kết quả cuối. Interview Copilot chỉ còn ở chế độ xem lại.')
+  }
 }
 
 const closeModal = () => {
@@ -308,6 +369,35 @@ const closeModal = () => {
   form.ket_qua_phong_van = ''
   form.hr_phu_trach_id = ''
   form.ghi_chu = ''
+  copilotSnapshot.value = null
+  resetCopilotScores([])
+}
+
+const parseCopilotSnapshot = (value) => {
+  if (!value) return null
+  if (typeof value === 'object') return value
+
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+const resetCopilotScores = (rubric = []) => {
+  Object.keys(copilotScores).forEach((key) => delete copilotScores[key])
+  rubric.forEach((item, index) => {
+    const key = item.criterion || `criterion_${index}`
+    copilotScores[key] = ''
+  })
+}
+
+const syncCopilotFromResponse = (payload) => {
+  copilotSnapshot.value = payload?.copilot || null
+  if (payload?.ket_qua_phong_van !== undefined) form.ket_qua_phong_van = payload.ket_qua_phong_van || form.ket_qua_phong_van
+  if (payload?.ghi_chu !== undefined) form.ghi_chu = payload.ghi_chu || form.ghi_chu
+  resetCopilotScores(copilotPreInterview.value?.rubric || [])
 }
 
 const closeCandidateDetail = () => {
@@ -412,6 +502,54 @@ const saveApplication = async () => {
   }
 }
 
+const generateInterviewCopilot = async () => {
+  if (!selectedApplication.value) return
+  if (!canUseInterviewCopilotFor(selectedApplication.value)) {
+    notify.warning(isFinalApplicationStatus(selectedApplication.value)
+      ? 'Đơn đã có kết quả cuối nên không thể tạo lại Interview Copilot.'
+      : 'Bạn không có quyền tạo Interview Copilot cho đơn ứng tuyển này.')
+    return
+  }
+
+  copilotGenerating.value = true
+  try {
+    const response = await employerApplicationService.generateInterviewCopilot(selectedApplication.value.id)
+    syncCopilotFromResponse(response?.data)
+    notify.success(response?.message || 'Đã tạo Interview Copilot.')
+    await fetchApplications()
+  } catch (error) {
+    notify.apiError(error, 'Không tạo được Interview Copilot.')
+  } finally {
+    copilotGenerating.value = false
+  }
+}
+
+const evaluateInterviewCopilot = async () => {
+  if (!selectedApplication.value) return
+  if (!canUseInterviewCopilotFor(selectedApplication.value)) {
+    notify.warning(isFinalApplicationStatus(selectedApplication.value)
+      ? 'Đơn đã có kết quả cuối nên không thể đánh giá lại bằng Interview Copilot.'
+      : 'Bạn không có quyền đánh giá Interview Copilot cho đơn ứng tuyển này.')
+    return
+  }
+
+  copilotEvaluating.value = true
+  try {
+    const response = await employerApplicationService.evaluateInterviewCopilot(selectedApplication.value.id, {
+      notes: form.ghi_chu || '',
+      decision: form.ket_qua_phong_van || '',
+      scores: { ...copilotScores },
+    })
+    syncCopilotFromResponse(response?.data)
+    notify.success(response?.message || 'Đã tạo đánh giá sau phỏng vấn.')
+    await fetchApplications()
+  } catch (error) {
+    notify.apiError(error, 'Không tạo được đánh giá sau phỏng vấn.')
+  } finally {
+    copilotEvaluating.value = false
+  }
+}
+
 const resendInterviewEmail = async (application) => {
   if (!canMutateApplication(application)) {
     notify.warning(canProcessApplications.value
@@ -437,7 +575,22 @@ const resendInterviewEmail = async (application) => {
 }
 
 onMounted(async () => {
-  await Promise.all([ensurePermissionsLoaded(), fetchJobs(), fetchApplications()])
+  await Promise.all([ensurePermissionsLoaded(), fetchJobs(), fetchApplications(), fetchNotificationTemplates()])
+
+  const companyId = company.value?.id
+  if (companyId) {
+    applicationRealtimeChannel = connectPrivateChannel(`company.${companyId}`)
+    applicationRealtimeChannel?.listen('.application.changed', () => {
+      void refreshApplicationsRealtime()
+    })
+  }
+})
+
+onUnmounted(() => {
+  if (applicationRealtimeChannel) {
+    applicationRealtimeChannel.stopListening('.application.changed')
+    applicationRealtimeChannel = null
+  }
 })
 
 watch(() => form.hr_phu_trach_id, (value) => {
@@ -481,8 +634,14 @@ watch(() => form.hr_phu_trach_id, (value) => {
     >
       {{ ownershipHint }}
     </div>
+    <div
+      v-if="overdueInterviews.length"
+      class="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-200"
+    >
+      Có <span class="font-black">{{ overdueInterviews.length }}</span> lịch phỏng vấn đã quá hạn nhưng chưa chốt kết quả cuối. Cần cập nhật sang trúng tuyển/từ chối hoặc ghi rõ bước xử lý tiếp theo để tránh tồn đọng pipeline.
+    </div>
 
-    <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+    <div class="mb-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
       <div
         v-for="card in stats"
         :key="card.label"
@@ -597,6 +756,13 @@ watch(() => form.hr_phu_trach_id, (value) => {
                     >
                       Đã rút đơn
                     </span>
+                    <span
+                      v-if="isInterviewResultOverdue(application)"
+                      class="inline-flex items-center gap-1 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300"
+                    >
+                      <span class="material-symbols-outlined text-[14px]">notification_important</span>
+                      Quá lịch cần cập nhật
+                    </span>
                   </div>
 
                   <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
@@ -619,6 +785,16 @@ watch(() => form.hr_phu_trach_id, (value) => {
                       {{ resendingEmailId === application.id ? 'progress_activity' : 'forward_to_inbox' }}
                     </span>
                     {{ resendingEmailId === application.id ? 'Đang gửi...' : 'Gửi lại email' }}
+                  </button>
+                  <button
+                    v-if="application.ngay_hen_phong_van || application.rubric_danh_gia_phong_van"
+                    class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300 dark:hover:bg-violet-500/15"
+                    :disabled="!canMutateApplication(application)"
+                    type="button"
+                    @click="openInterviewCopilotWorkspace(application)"
+                  >
+                    <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
+                    Copilot
                   </button>
                   <button
                     class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 text-sm font-bold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
@@ -764,6 +940,39 @@ watch(() => form.hr_phu_trach_id, (value) => {
       </div>
 
       <div class="space-y-6">
+        <div
+          v-if="overdueInterviews.length"
+          class="rounded-2xl border border-rose-200 bg-white p-6 shadow-sm shadow-rose-950/5 dark:border-rose-500/20 dark:bg-slate-900"
+        >
+          <h3 class="text-xl font-bold text-slate-900 dark:text-white">Cần cập nhật kết quả</h3>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Các lịch đã qua nhưng chưa được chốt kết quả cuối.</p>
+
+          <div class="mt-5 space-y-4">
+            <div
+              v-for="application in overdueInterviews.slice(0, 5)"
+              :key="`overdue-${application.id}`"
+              class="rounded-xl border border-rose-100 bg-rose-50 px-4 py-4 dark:border-rose-500/20 dark:bg-rose-500/10"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ application.ho_so?.tieu_de_ho_so || 'Hồ sơ ứng viên' }}</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}</p>
+                </div>
+                <span class="material-symbols-outlined rounded-xl bg-rose-500/10 p-2 text-[18px] text-rose-600 dark:text-rose-300">priority_high</span>
+              </div>
+              <p class="mt-3 text-sm font-semibold text-rose-700 dark:text-rose-200">{{ formatDateTime(application.ngay_hen_phong_van) }}</p>
+              <button
+                class="mt-3 inline-flex h-9 items-center justify-center rounded-xl bg-rose-600 px-3 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                :disabled="!canMutateApplication(application)"
+                type="button"
+                @click="openModal(application)"
+              >
+                Cập nhật kết quả
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm shadow-slate-950/5 dark:border-slate-800 dark:bg-slate-900">
           <h3 class="text-xl font-bold text-slate-900 dark:text-white">Lịch phỏng vấn sắp tới</h3>
           <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Những hồ sơ đã có lịch hẹn để bạn chủ động chuẩn bị.</p>
@@ -853,6 +1062,174 @@ watch(() => form.hr_phu_trach_id, (value) => {
             >
               Đơn này đã có kết quả cuối, bạn chỉ có thể cập nhật ghi chú nội bộ hoặc thông tin bổ sung mà không đổi trạng thái.
             </p>
+          </div>
+
+          <div v-if="activeTemplate" class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-500/20 dark:bg-blue-500/10">
+            <div class="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <p class="text-xs font-black uppercase tracking-[0.2em] text-blue-600 dark:text-blue-300">Template thông báo</p>
+                <h4 class="mt-2 text-base font-black text-slate-900 dark:text-white">{{ activeTemplate.title }}</h4>
+                <p class="mt-1 text-sm font-semibold text-slate-700 dark:text-slate-200">Tiêu đề email: {{ activeTemplate.subject }}</p>
+              </div>
+              <span class="rounded-full bg-white px-3 py-1 text-xs font-bold text-blue-700 dark:bg-slate-900 dark:text-blue-300">
+                {{ activeTemplate.status_label }}
+              </span>
+            </div>
+            <p class="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-200">{{ activeTemplate.body }}</p>
+            <p class="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">{{ activeTemplate.usage_hint }}</p>
+          </div>
+
+          <div class="md:col-span-2 rounded-2xl border border-violet-100 bg-violet-50 p-4 dark:border-violet-500/20 dark:bg-violet-500/10">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-black uppercase tracking-[0.2em] text-violet-600 dark:text-violet-300">Interview Copilot</p>
+                <h4 class="mt-2 text-base font-black text-slate-900 dark:text-white">AI hỗ trợ HR chuẩn bị và đánh giá phỏng vấn</h4>
+                <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Sinh tóm tắt CV, câu hỏi phỏng vấn, rubric đánh giá và gợi ý kết luận sau khi HR nhập ghi chú.
+                </p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
+                  :disabled="copilotGenerating || !canUseSelectedInterviewCopilot"
+                  type="button"
+                  @click="generateInterviewCopilot"
+                >
+                  <span class="material-symbols-outlined text-[18px]" :class="copilotGenerating ? 'animate-spin' : ''">
+                    {{ copilotGenerating ? 'progress_activity' : 'auto_awesome' }}
+                  </span>
+                  {{ copilotGenerating ? 'Đang tạo...' : 'Tạo Copilot' }}
+                </button>
+                <button
+                  class="inline-flex h-10 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-60 dark:bg-white dark:text-slate-900"
+                  :disabled="copilotEvaluating || !canUseSelectedInterviewCopilot"
+                  type="button"
+                  @click="evaluateInterviewCopilot"
+                >
+                  <span class="material-symbols-outlined text-[18px]" :class="copilotEvaluating ? 'animate-spin' : ''">
+                    {{ copilotEvaluating ? 'progress_activity' : 'fact_check' }}
+                  </span>
+                  {{ copilotEvaluating ? 'Đang đánh giá...' : 'Đánh giá sau PV' }}
+                </button>
+              </div>
+            </div>
+
+            <div
+              v-if="selectedApplication && !canUseSelectedInterviewCopilot"
+              class="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-950/50 dark:text-slate-300"
+            >
+              <span class="font-bold text-slate-900 dark:text-white">Chế độ xem lại:</span>
+              <span class="ml-1">
+                {{ isFinalApplicationStatus(selectedApplication)
+                  ? 'Đơn đã trúng tuyển hoặc từ chối nên không thể tạo/đánh giá Copilot mới.'
+                  : 'Bạn không có quyền thao tác Interview Copilot cho đơn này.' }}
+              </span>
+            </div>
+            <div
+              v-if="selectedInterviewOverdue"
+              class="mt-4 rounded-2xl border border-rose-200 bg-white px-4 py-3 text-sm leading-6 text-rose-700 dark:border-rose-500/20 dark:bg-slate-950/50 dark:text-rose-200"
+            >
+              Lịch phỏng vấn đã quá thời gian nhưng đơn chưa có kết quả cuối. Sau khi xem lại ghi chú/Copilot, nên cập nhật trạng thái sang <span class="font-bold">Trúng tuyển</span> hoặc <span class="font-bold">Từ chối</span> nếu đã có quyết định.
+            </div>
+
+            <div v-if="copilotPreInterview" class="mt-4 space-y-4">
+              <div class="rounded-2xl bg-white p-4 dark:bg-slate-950/50">
+                <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Tóm tắt nhanh</p>
+                <p class="mt-2 text-sm leading-7 text-slate-700 dark:text-slate-200">{{ copilotPreInterview.candidate_summary }}</p>
+              </div>
+
+              <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <div class="rounded-2xl bg-white p-4 dark:bg-slate-950/50">
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Trọng tâm phỏng vấn</p>
+                  <ul class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    <li v-for="item in copilotPreInterview.focus_areas || []" :key="item" class="flex gap-2">
+                      <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" />
+                      <span>{{ item }}</span>
+                    </li>
+                  </ul>
+                </div>
+                <div class="rounded-2xl bg-white p-4 dark:bg-slate-950/50">
+                  <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Rủi ro cần kiểm tra</p>
+                  <ul class="mt-3 space-y-2 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    <li v-for="item in copilotPreInterview.red_flags || []" :key="item" class="flex gap-2">
+                      <span class="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                      <span>{{ item }}</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <div class="rounded-2xl bg-white p-4 dark:bg-slate-950/50">
+                <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Câu hỏi phỏng vấn gợi ý</p>
+                <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  <div
+                    v-for="group in copilotPreInterview.questions || []"
+                    :key="group.group"
+                    class="rounded-xl bg-slate-50 p-3 dark:bg-slate-900"
+                  >
+                    <p class="font-bold text-slate-900 dark:text-white">{{ group.group }}</p>
+                    <ol class="mt-2 list-decimal space-y-1 pl-5 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                      <li v-for="question in group.items || []" :key="question">{{ question }}</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl bg-white p-4 dark:bg-slate-950/50">
+                <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Rubric đánh giá</p>
+                <div class="mt-3 space-y-3">
+                  <div
+                    v-for="(item, index) in copilotPreInterview.rubric || []"
+                    :key="`${item.criterion}-${index}`"
+                    class="grid grid-cols-1 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900 lg:grid-cols-[minmax(0,1fr)_120px]"
+                  >
+                    <div>
+                      <p class="font-bold text-slate-900 dark:text-white">
+                        {{ item.criterion }}
+                        <span v-if="item.weight" class="text-xs font-semibold text-slate-500">({{ item.weight }}%)</span>
+                      </p>
+                      <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">{{ item.expectation || 'Chưa có mô tả kỳ vọng.' }}</p>
+                    </div>
+                    <input
+                      v-model="copilotScores[item.criterion]"
+                      class="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+                      max="10"
+                      min="0"
+                      placeholder="0-10"
+                      type="number"
+                    >
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="copilotPostInterview" class="mt-4 rounded-2xl bg-white p-4 dark:bg-slate-950/50">
+              <p class="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Gợi ý sau phỏng vấn</p>
+              <p class="mt-2 text-sm font-semibold leading-7 text-slate-900 dark:text-white">{{ copilotPostInterview.summary }}</p>
+              <div class="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                <div class="rounded-xl bg-emerald-50 p-3 dark:bg-emerald-900/20">
+                  <p class="text-xs font-black uppercase text-emerald-700 dark:text-emerald-300">Điểm mạnh</p>
+                  <ul class="mt-2 space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    <li v-for="item in copilotPostInterview.strengths || []" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div class="rounded-xl bg-amber-50 p-3 dark:bg-amber-900/20">
+                  <p class="text-xs font-black uppercase text-amber-700 dark:text-amber-300">Điểm cần lưu ý</p>
+                  <ul class="mt-2 space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    <li v-for="item in copilotPostInterview.concerns || []" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+                <div class="rounded-xl bg-blue-50 p-3 dark:bg-blue-900/20">
+                  <p class="text-xs font-black uppercase text-blue-700 dark:text-blue-300">Bước tiếp theo</p>
+                  <ul class="mt-2 space-y-1 text-sm leading-6 text-slate-700 dark:text-slate-200">
+                    <li v-for="item in copilotPostInterview.next_steps || []" :key="item">{{ item }}</li>
+                  </ul>
+                </div>
+              </div>
+              <p class="mt-3 rounded-xl bg-violet-50 p-3 text-sm font-semibold leading-6 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300">
+                Khuyến nghị: {{ copilotPostInterview.recommendation }}
+              </p>
+            </div>
           </div>
 
           <div class="md:col-span-2">

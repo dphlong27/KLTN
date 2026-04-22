@@ -66,6 +66,29 @@ const certificates = computed(() => Array.isArray(props.profile?.chung_chi_json)
 const limitedExperiences = computed(() => experiences.value.slice(0, props.compact ? 2 : 4))
 const limitedProjects = computed(() => projects.value.slice(0, props.compact ? 2 : 3))
 const limitedCertificates = computed(() => certificates.value.slice(0, props.compact ? 2 : 3))
+
+const getProjectDomain = (item) => item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || ''
+const getProjectOrganization = (item) => item?.don_vi_hoac_khach_hang || ''
+const getProjectEvidenceTypeLabel = (value) => {
+  const labels = {
+    github: 'GitHub',
+    demo: 'Demo',
+    api_docs: 'API docs',
+    portfolio: 'Portfolio',
+    case_study: 'Case study',
+    report: 'Báo cáo',
+    dashboard: 'Dashboard',
+    behance: 'Behance',
+    figma: 'Figma',
+    dribbble: 'Dribbble',
+    campaign: 'Chiến dịch',
+    landing_page: 'Landing page',
+    reference: 'Minh chứng',
+  }
+
+  return labels[String(value || '').trim()] || ''
+}
+const getProjectEvidenceLink = (item) => item?.lien_ket_minh_chung || item?.link || ''
 </script>
 
 <template>
@@ -162,8 +185,17 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
               <article v-for="(item, index) in limitedProjects" :key="`project-navy-${index}`">
                 <p class="text-sm font-bold">{{ item.ten }}</p>
                 <p class="mt-1 text-sm font-semibold">{{ item.vai_tro || 'Vai trò đang cập nhật' }}</p>
-                <p v-if="item.cong_nghe" class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ item.cong_nghe }}</p>
+                <p v-if="getProjectOrganization(item) || getProjectDomain(item)" class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">
+                  {{ [getProjectOrganization(item), getProjectDomain(item)].filter(Boolean).join(' | ') }}
+                </p>
                 <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-600">{{ item.mo_ta }}</p>
+                <p v-if="item.ket_qua_noi_bat" class="mt-2 whitespace-pre-wrap text-sm font-medium leading-7 text-slate-700">
+                  Kết quả: {{ item.ket_qua_noi_bat }}
+                </p>
+                <p v-if="getProjectEvidenceLink(item)" class="mt-2 text-sm text-slate-600">
+                  {{ getProjectEvidenceTypeLabel(item.loai_minh_chung) || 'Minh chứng' }}:
+                  <span class="break-all text-slate-800">{{ getProjectEvidenceLink(item) }}</span>
+                </p>
               </article>
             </div>
             <p v-else class="mt-3 text-sm text-slate-500">Chưa cập nhật dự án.</p>
@@ -219,7 +251,8 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
                 </div>
                 <div v-for="(item, index) in limitedProjects" :key="`project-maroon-${index}`">
                   <p class="font-semibold">{{ item.ten }}</p>
-                  <p>{{ item.vai_tro || item.cong_nghe }}</p>
+                  <p>{{ [item.vai_tro, getProjectOrganization(item), getProjectDomain(item)].filter(Boolean).join(' | ') }}</p>
+                  <p v-if="item.ket_qua_noi_bat" class="text-white/80">Kết quả: {{ item.ket_qua_noi_bat }}</p>
                 </div>
               </div>
               <p v-if="!limitedCertificates.length && !limitedProjects.length" class="mt-3 text-sm text-white/70">Chưa cập nhật chứng chỉ hoặc dự án.</p>
@@ -327,8 +360,22 @@ const limitedCertificates = computed(() => certificates.value.slice(0, props.com
           <div class="mt-5 space-y-4">
             <article v-for="(item, index) in limitedProjects" :key="`project-ats-${index}`">
               <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.ten }}</p>
-              <p class="mt-1 text-[15px] text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.cong_nghe }}<span v-if="item.vai_tro"> | {{ item.vai_tro }}</span></p>
+              <p
+                v-if="item.vai_tro || getProjectOrganization(item) || getProjectDomain(item)"
+                class="mt-1 text-[15px] text-slate-900"
+                style="font-family: Georgia, 'Times New Roman', serif;"
+              >
+                {{ [item.vai_tro, getProjectOrganization(item), getProjectDomain(item)].filter(Boolean).join(' | ') }}
+              </p>
               <p v-if="item.mo_ta" class="mt-2 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.mo_ta }}</p>
+              <p v-if="item.ket_qua_noi_bat" class="mt-2 whitespace-pre-wrap text-[15px] leading-8 text-slate-900" style="font-family: Georgia, 'Times New Roman', serif;">Kết quả: {{ item.ket_qua_noi_bat }}</p>
+              <p
+                v-if="getProjectEvidenceLink(item)"
+                class="mt-2 break-all text-[14px] text-slate-700"
+                style="font-family: Georgia, 'Times New Roman', serif;"
+              >
+                {{ getProjectEvidenceTypeLabel(item.loai_minh_chung) || 'Minh chứng' }}: {{ getProjectEvidenceLink(item) }}
+              </p>
             </article>
             <article v-for="(item, index) in limitedCertificates" :key="`cert-ats-${index}`">
               <p class="text-[18px] font-bold text-slate-950" style="font-family: Georgia, 'Times New Roman', serif;">{{ item.ten }}</p>

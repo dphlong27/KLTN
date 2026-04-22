@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\NguoiDung\AdminTaoNguoiDungRequest;
 use App\Models\NguoiDung;
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,6 +25,18 @@ use Illuminate\Http\Request;
  */
 class AdminNguoiDungController extends Controller
 {
+    private function userAuditSnapshot(NguoiDung $nguoiDung): array
+    {
+        return $nguoiDung->only([
+            'id',
+            'ho_ten',
+            'email',
+            'so_dien_thoai',
+            'vai_tro',
+            'trang_thai',
+        ]);
+    }
+
     /**
      * GET /api/admin/nguoi-dungs
      * Danh sách người dùng với bộ lọc, tìm kiếm, phân trang.
@@ -79,6 +92,15 @@ class AdminNguoiDungController extends Controller
     public function store(AdminTaoNguoiDungRequest $request): JsonResponse
     {
         $nguoiDung = NguoiDung::create($request->validated());
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_user_created',
+            description: "Admin tạo tài khoản {$nguoiDung->email}.",
+            target: $nguoiDung,
+            after: $this->userAuditSnapshot($nguoiDung),
+            metadata: ['scope' => 'admin_user'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -124,7 +146,18 @@ class AdminNguoiDungController extends Controller
         // Không cần hash thủ công — Model đã có cast 'mat_khau' => 'hashed'
         // nên Laravel tự động hash khi gán giá trị qua update()
 
+        $before = $this->userAuditSnapshot($nguoiDung);
         $nguoiDung->update($validated);
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_user_updated',
+            description: "Admin cập nhật tài khoản {$nguoiDung->email}.",
+            target: $nguoiDung,
+            before: $before,
+            after: $this->userAuditSnapshot($nguoiDung->fresh()),
+            metadata: ['scope' => 'admin_user'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -148,9 +181,18 @@ class AdminNguoiDungController extends Controller
             ], 422);
         }
 
+        $before = $this->userAuditSnapshot($nguoiDung);
         // Thu hồi token trước khi xoá
         $nguoiDung->tokens()->delete();
         $nguoiDung->delete();
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_user_deleted',
+            description: "Admin xóa tài khoản {$before['email']}.",
+            target: $nguoiDung,
+            before: $before,
+            metadata: ['scope' => 'admin_user'],
+        );
 
         return response()->json([
             'success' => true,
@@ -173,6 +215,7 @@ class AdminNguoiDungController extends Controller
             ], 422);
         }
 
+        $before = $this->userAuditSnapshot($nguoiDung);
         $nguoiDung->trang_thai = $nguoiDung->trang_thai ? 0 : 1;
         $nguoiDung->save();
 
@@ -182,6 +225,15 @@ class AdminNguoiDungController extends Controller
         }
 
         $action = $nguoiDung->trang_thai ? 'Mở khoá' : 'Khoá';
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: $nguoiDung->trang_thai ? 'admin_user_unlocked' : 'admin_user_locked',
+            description: "Admin {$action} tài khoản {$nguoiDung->email}.",
+            target: $nguoiDung,
+            before: $before,
+            after: $this->userAuditSnapshot($nguoiDung),
+            metadata: ['scope' => 'admin_user'],
+        );
 
         return response()->json([
             'success' => true,

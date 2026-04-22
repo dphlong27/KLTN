@@ -6,9 +6,9 @@ use App\Http\Controllers\Api\Concerns\ResolvesEmployerCompany;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\CongTy\TaoCongTyRequest;
 use App\Http\Requests\CongTy\CapNhatCongTyRequest;
+use App\Models\AuditLog;
 use App\Models\CongTy;
 use App\Models\CongTyLoiMoi;
-use App\Models\HrAuditLog;
 use App\Models\NguoiDung;
 use App\Services\HrAuditLogService;
 use Illuminate\Http\JsonResponse;
@@ -115,27 +115,31 @@ class NhaTuyenDungCongTyController extends Controller
         return $data;
     }
 
-    private function mapHrAuditLogData(HrAuditLog $log): array
+    private function mapHrAuditLogData(AuditLog $log): array
     {
         $log->loadMissing([
-            'nguoiThucHien:id,ho_ten,email',
-            'nguoiBiTacDong:id,ho_ten,email',
+            'actor:id,ho_ten,email',
         ]);
+        $targetUser = null;
+
+        if ($log->target_type === NguoiDung::class && $log->target_id) {
+            $targetUser = NguoiDung::select('id', 'ho_ten', 'email')->find($log->target_id);
+        }
 
         return [
             'id' => $log->id,
-            'loai_su_kien' => $log->loai_su_kien,
-            'mo_ta' => $log->mo_ta,
-            'du_lieu_bo_sung' => $log->du_lieu_bo_sung,
-            'nguoi_thuc_hien' => $log->nguoiThucHien ? [
-                'id' => $log->nguoiThucHien->id,
-                'ho_ten' => $log->nguoiThucHien->ho_ten,
-                'email' => $log->nguoiThucHien->email,
+            'loai_su_kien' => $log->action,
+            'mo_ta' => $log->description,
+            'du_lieu_bo_sung' => $log->metadata_json,
+            'nguoi_thuc_hien' => $log->actor ? [
+                'id' => $log->actor->id,
+                'ho_ten' => $log->actor->ho_ten,
+                'email' => $log->actor->email,
             ] : null,
-            'nguoi_bi_tac_dong' => $log->nguoiBiTacDong ? [
-                'id' => $log->nguoiBiTacDong->id,
-                'ho_ten' => $log->nguoiBiTacDong->ho_ten,
-                'email' => $log->nguoiBiTacDong->email,
+            'nguoi_bi_tac_dong' => $targetUser ? [
+                'id' => $targetUser->id,
+                'ho_ten' => $targetUser->ho_ten,
+                'email' => $targetUser->email,
             ] : null,
             'created_at' => optional($log->created_at)?->toISOString(),
         ];
@@ -771,14 +775,15 @@ class NhaTuyenDungCongTyController extends Controller
             ], 404);
         }
 
-        $logs = HrAuditLog::query()
-            ->where('cong_ty_id', $congTy->id)
-            ->with(['nguoiThucHien:id,ho_ten,email', 'nguoiBiTacDong:id,ho_ten,email'])
+        $logs = AuditLog::query()
+            ->where('company_id', $congTy->id)
+            ->where('metadata_json->scope', 'hr')
+            ->with(['actor:id,ho_ten,email'])
             ->latest()
             ->paginate((int) $request->get('per_page', 10));
 
         $logs->setCollection(
-            $logs->getCollection()->map(fn (HrAuditLog $log) => $this->mapHrAuditLogData($log))
+            $logs->getCollection()->map(fn (AuditLog $log) => $this->mapHrAuditLogData($log))
         );
 
         return response()->json([

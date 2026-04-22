@@ -6,11 +6,16 @@ use App\Events\CompanyFollowerCountUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\CongTy;
 use App\Models\TinTuyenDung;
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class UngVienTheoDoiCongTyController extends Controller
 {
+    public function __construct(private readonly AuditLogService $auditLogService)
+    {
+    }
+
     private function dispatchFollowerCountUpdate(CongTy $congTy): void
     {
         try {
@@ -99,7 +104,7 @@ class UngVienTheoDoiCongTyController extends Controller
         ]);
     }
 
-    public function toggle(int $congTyId): JsonResponse
+    public function toggle(Request $request, int $congTyId): JsonResponse
     {
         $congTy = CongTy::where('trang_thai', CongTy::TRANG_THAI_HOAT_DONG)->findOrFail($congTyId);
 
@@ -114,6 +119,20 @@ class UngVienTheoDoiCongTyController extends Controller
         $soNguoiTheoDoi = (int) $congTy->nguoiDungTheoDois()->count();
 
         $this->dispatchFollowerCountUpdate($congTy);
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: $daTheoDoi ? 'candidate_company_followed' : 'candidate_company_unfollowed',
+            description: ($daTheoDoi ? 'Ứng viên theo dõi ' : 'Ứng viên bỏ theo dõi ') . $congTy->ten_cong_ty . '.',
+            target: $congTy,
+            company: $congTy,
+            after: [
+                'cong_ty_id' => $congTy->id,
+                'da_theo_doi' => $daTheoDoi,
+                'so_nguoi_theo_doi' => $soNguoiTheoDoi,
+            ],
+            metadata: ['scope' => 'candidate_follow'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,

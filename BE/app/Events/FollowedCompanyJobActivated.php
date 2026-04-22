@@ -126,4 +126,14 @@ class FollowedCompanyJobActivated implements ShouldBroadcastNow
     {
         return $this->payload;
     }
+
+    public function recipientIds(): array
+    {
+        return $this->recipientIds;
+    }
+
+    public function notificationPayload(): array
+    {
+        return $this->payload;
+    }
 }

@@ -14,6 +14,7 @@ import {
   cvTemplateModeOptions,
   cvStylePreferenceOptions,
   getCvTemplateMeta,
+  getCvProjectFieldConfig,
   cvTemplateLabel,
   getCvTemplatesForMode,
   inferCvStyleFamily,
@@ -21,6 +22,7 @@ import {
   resolveProfileCvAvatarUrl,
   setRuntimeCvTemplateOptions,
   suggestCvTemplateByMode,
+  templateUsesCvPhoto,
 } from '@/utils/profileCvBuilder'
 
 const route = useRoute()
@@ -54,7 +56,16 @@ const educationOptions = [
 const createSkillItem = (ten = '', muc_do = 'kha') => ({ ten, muc_do })
 const createExperienceItem = () => ({ vi_tri: '', cong_ty: '', bat_dau: '', ket_thuc: '', mo_ta: '' })
 const createEducationItem = () => ({ truong: '', chuyen_nganh: '', bat_dau: '', ket_thuc: '', mo_ta: '' })
-const createProjectItem = () => ({ ten: '', vai_tro: '', cong_nghe: '', mo_ta: '', link: '' })
+const createProjectItem = () => ({
+  ten: '',
+  vai_tro: '',
+  don_vi_hoac_khach_hang: '',
+  linh_vuc_hoac_cong_cu: '',
+  mo_ta: '',
+  ket_qua_noi_bat: '',
+  loai_minh_chung: '',
+  lien_ket_minh_chung: '',
+})
 const createCertificateItem = () => ({ ten: '', don_vi: '', nam: '' })
 
 const form = reactive({
@@ -126,6 +137,10 @@ const selectedIndustry = computed(() =>
 const selectedIndustryName = computed(
   () => selectedIndustry.value?.ten_nganh || selectedIndustry.value?.ten_nganh_nghe || '',
 )
+const projectFieldConfig = computed(() => getCvProjectFieldConfig({
+  industryName: selectedIndustryName.value,
+  positionValue: targetPosition.value,
+}))
 
 const recommendedTemplate = computed(() => suggestCvTemplateByMode({
   mode: templateMode.value,
@@ -136,6 +151,9 @@ const recommendedTemplate = computed(() => suggestCvTemplateByMode({
 }))
 const selectedTemplateMeta = computed(() =>
   getCvTemplateMeta(form.mau_cv) || getCvTemplateMeta(recommendedTemplate.value),
+)
+const selectedTemplateUsesPhoto = computed(() =>
+  templateUsesCvPhoto(form.mau_cv, selectedTemplateMeta.value?.layout || form.bo_cuc_cv || ''),
 )
 const candidateAvatarUrl = computed(() =>
   currentCandidate.value?.avatar_url ||
@@ -277,7 +295,16 @@ const fillForm = (profile) => {
     ? profile.hoc_van_json.map((item) => ({ truong: item?.truong || '', chuyen_nganh: item?.chuyen_nganh || '', bat_dau: item?.bat_dau || '', ket_thuc: item?.ket_thuc || '', mo_ta: item?.mo_ta || '' }))
     : [createEducationItem()]
   form.du_an_json = Array.isArray(profile?.du_an_json)
-    ? profile.du_an_json.map((item) => ({ ten: item?.ten || '', vai_tro: item?.vai_tro || '', cong_nghe: item?.cong_nghe || '', mo_ta: item?.mo_ta || '', link: item?.link || '' }))
+    ? profile.du_an_json.map((item) => ({
+        ten: item?.ten || '',
+        vai_tro: item?.vai_tro || '',
+        don_vi_hoac_khach_hang: item?.don_vi_hoac_khach_hang || item?.don_vi || item?.khach_hang || '',
+        linh_vuc_hoac_cong_cu: item?.linh_vuc_hoac_cong_cu || item?.cong_nghe || '',
+        mo_ta: item?.mo_ta || '',
+        ket_qua_noi_bat: item?.ket_qua_noi_bat || '',
+        loai_minh_chung: item?.loai_minh_chung || '',
+        lien_ket_minh_chung: item?.lien_ket_minh_chung || item?.link || '',
+      }))
     : []
   form.chung_chi_json = Array.isArray(profile?.chung_chi_json)
     ? profile.chung_chi_json.map((item) => ({ ten: item?.ten || '', don_vi: item?.don_vi || '', nam: item?.nam || '' }))
@@ -476,7 +503,7 @@ const buildFormData = () => {
 }
 
 const submitProfile = async () => {
-  if (form.che_do_anh_cv === 'upload' && !form.anh_cv && !form.anh_cv_url) {
+  if (selectedTemplateUsesPhoto.value && form.che_do_anh_cv === 'upload' && !form.anh_cv && !form.anh_cv_url) {
     notify.warning('Hãy chọn ảnh đại diện riêng cho CV hoặc chuyển sang dùng ảnh tài khoản.')
     return
   }
@@ -797,7 +824,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <div class="md:col-span-2 rounded-3xl border border-slate-200 p-5 dark:border-slate-700">
+              <div v-if="selectedTemplateUsesPhoto" class="md:col-span-2 rounded-3xl border border-slate-200 p-5 dark:border-slate-700">
                 <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200">Ảnh đại diện trên CV</label>
@@ -895,6 +922,14 @@ onBeforeUnmount(() => {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div v-else class="md:col-span-2 rounded-3xl border border-dashed border-slate-200 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-950">
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200">Ảnh đại diện trên CV</label>
+                <p class="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
+                  Template hiện tại không sử dụng ảnh đại diện, nên hệ thống đã ẩn phần chọn ảnh. Nếu bạn chuyển sang mẫu có ảnh như
+                  <span class="font-semibold text-slate-700 dark:text-slate-200">Sidebar Maroon</span>, tùy chọn dùng ảnh đại diện tài khoản hoặc upload ảnh riêng sẽ xuất hiện lại.
+                </p>
               </div>
 
               <div class="md:col-span-2">
@@ -1005,26 +1040,90 @@ onBeforeUnmount(() => {
             <div class="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
               <div class="mb-4 flex items-center justify-between gap-4">
                 <div>
-                  <h2 class="text-lg font-bold text-slate-900 dark:text-white">Dự án</h2>
-                  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Nêu các dự án nổi bật để CV có chiều sâu hơn.</p>
+                  <h2 class="text-lg font-bold text-slate-900 dark:text-white">{{ projectFieldConfig.sectionTitle }}</h2>
+                  <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">{{ projectFieldConfig.sectionDescription }}</p>
                 </div>
                 <button class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" type="button" @click="addSectionItem('du_an_json')">
-                  Thêm dự án
+                  Thêm mục
                 </button>
               </div>
 
               <div class="space-y-4">
                 <div v-for="(item, index) in form.du_an_json" :key="`project-${index}`" class="rounded-3xl border border-slate-200 p-4 dark:border-slate-700">
-                  <div class="grid grid-cols-1 gap-3">
-                    <input v-model="item.ten" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Tên dự án" type="text" />
-                    <input v-model="item.vai_tro" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Vai trò" type="text" />
-                    <input v-model="item.cong_nghe" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Công nghệ" type="text" />
-                    <input v-model="item.link" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Link demo / GitHub" type="text" />
-                    <textarea v-model="item.mo_ta" rows="3" class="rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Mô tả dự án và kết quả nổi bật." />
+                  <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <label class="space-y-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">Tên dự án / thành tựu</span>
+                      <input v-model="item.ten" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Ví dụ: Hệ thống quản lý tuyển dụng, chiến dịch ra mắt sản phẩm, dashboard tài chính..." type="text" />
+                    </label>
+                    <label class="space-y-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">Vai trò của bạn</span>
+                      <input v-model="item.vai_tro" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Ví dụ: Backend Developer, Digital Marketer, HR Executive..." type="text" />
+                    </label>
+                    <label class="space-y-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">{{ projectFieldConfig.organizationLabel }}</span>
+                      <input
+                        v-model="item.don_vi_hoac_khach_hang"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        :placeholder="projectFieldConfig.organizationPlaceholder"
+                        :aria-label="projectFieldConfig.organizationLabel"
+                        type="text"
+                      />
+                    </label>
+                    <label class="space-y-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">{{ projectFieldConfig.domainLabel }}</span>
+                      <input
+                        v-model="item.linh_vuc_hoac_cong_cu"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        :placeholder="projectFieldConfig.domainPlaceholder"
+                        :aria-label="projectFieldConfig.domainLabel"
+                        type="text"
+                      />
+                    </label>
+                    <label class="space-y-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">{{ projectFieldConfig.evidenceTypeLabel }}</span>
+                      <select
+                        v-model="item.loai_minh_chung"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        :aria-label="projectFieldConfig.evidenceTypeLabel"
+                      >
+                        <option v-for="option in projectFieldConfig.evidenceTypeOptions" :key="option.value || 'empty'" :value="option.value">
+                          {{ option.label }}
+                        </option>
+                      </select>
+                    </label>
+                    <label class="space-y-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">{{ projectFieldConfig.evidenceLinkLabel }}</span>
+                      <input
+                        v-model="item.lien_ket_minh_chung"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        :placeholder="projectFieldConfig.evidenceLinkPlaceholder"
+                        :aria-label="projectFieldConfig.evidenceLinkLabel"
+                        type="url"
+                      />
+                    </label>
+                    <label class="space-y-2 md:col-span-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">Mô tả phần bạn trực tiếp thực hiện</span>
+                      <textarea
+                        v-model="item.mo_ta"
+                        rows="3"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        placeholder="Mô tả ngắn bối cảnh, phạm vi công việc, phần bạn trực tiếp làm và cách bạn phối hợp với đội nhóm."
+                      />
+                    </label>
+                    <label class="space-y-2 md:col-span-2">
+                      <span class="text-sm font-semibold text-slate-700 dark:text-slate-200">{{ projectFieldConfig.resultLabel }}</span>
+                      <textarea
+                        v-model="item.ket_qua_noi_bat"
+                        rows="2"
+                        class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+                        :placeholder="projectFieldConfig.resultPlaceholder"
+                        :aria-label="projectFieldConfig.resultLabel"
+                      />
+                    </label>
                   </div>
                   <div class="mt-3 flex justify-end">
                     <button class="rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50 dark:border-rose-900/40 dark:hover:bg-rose-900/10" type="button" @click="removeSectionItem('du_an_json', index)">
-                      Xóa dự án
+                      Xóa mục
                     </button>
                   </div>
                 </div>

@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\NguoiDungKyNangController;
 use App\Http\Controllers\Api\CongTyController;
 use App\Http\Controllers\Api\TinTuyenDungController;
 use App\Http\Controllers\Api\NhaTuyenDungCongTyController;
+use App\Http\Controllers\Api\NhaTuyenDungAuditLogController;
+use App\Http\Controllers\Api\NhaTuyenDungShortlistController;
 use App\Http\Controllers\Api\NhaTuyenDungTinTuyenDungController;
 use App\Http\Controllers\Api\NhaTuyenDungUngTuyenController;
 use App\Http\Controllers\Api\UngVienKetQuaMatchingController;
@@ -20,13 +22,16 @@ use App\Http\Controllers\Api\CvParsingController;
 use App\Http\Controllers\Api\JdParsingController;
 use App\Http\Controllers\Api\MatchingController;
 use App\Http\Controllers\Api\CoverLetterController;
+use App\Http\Controllers\Api\CvTailoringController;
 use App\Http\Controllers\Api\CareerReportController;
 use App\Http\Controllers\Api\SemanticSearchController;
 use App\Http\Controllers\Api\CvTemplateController;
 use App\Http\Controllers\Api\AiChatSessionController;
 use App\Http\Controllers\Api\AiChatMessageController;
 use App\Http\Controllers\Api\MockInterviewController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\Admin\AdminNguoiDungController;
+use App\Http\Controllers\Api\Admin\AdminAuditLogController;
 use App\Http\Controllers\Api\Admin\AdminHoSoController;
 use App\Http\Controllers\Api\Admin\AdminNganhNgheController;
 use App\Http\Controllers\Api\Admin\AdminKyNangController;
@@ -123,10 +128,30 @@ Route::post('v1/doi-mat-khau', [AuthController::class, 'doiMatKhau'])
     ->middleware('auth:sanctum')
     ->name('auth.doi-mat-khau');
 
+Route::get('v1/notifications', [NotificationController::class, 'index'])
+    ->middleware('auth:sanctum')
+    ->name('notifications.index');
+
+Route::get('v1/notifications/unread-count', [NotificationController::class, 'unreadCount'])
+    ->middleware('auth:sanctum')
+    ->name('notifications.unread-count');
+
+Route::patch('v1/notifications/{id}/read', [NotificationController::class, 'markAsRead'])
+    ->middleware('auth:sanctum')
+    ->name('notifications.read');
+
+Route::patch('v1/notifications/read-all', [NotificationController::class, 'markAllAsRead'])
+    ->middleware('auth:sanctum')
+    ->name('notifications.read-all');
+
 
 // ============================================================
 // NHÓM 3: ADMIN — Quản lý người dùng (vai_tro = 2)
 // ============================================================
+
+Route::get('v1/admin/audit-logs', [AdminAuditLogController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:admin'])
+    ->name('admin.audit-logs.index');
 
 // Thống kê tổng quan người dùng (⚠️ đặt trước /{id} để tránh conflict)
 Route::get('v1/admin/nguoi-dungs/thong-ke', [AdminNguoiDungController::class, 'thongKe'])
@@ -216,6 +241,10 @@ Route::post('v1/ung-vien/ho-sos/{id}/matching', [MatchingController::class, 'gen
 Route::post('v1/ung-vien/ho-sos/{id}/career-report', [CareerReportController::class, 'generate'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
     ->name('ung-vien.ho-sos.career-report');
+
+Route::post('v1/ung-vien/ho-sos/{id}/tailor/{tinTuyenDungId}', [CvTailoringController::class, 'tailorForJob'])
+    ->middleware(['auth:sanctum', 'role:ung_vien'])
+    ->name('ung-vien.ho-sos.tailor-for-job');
 
 Route::get('v1/ai-chat/sessions', [AiChatSessionController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:ung_vien'])
@@ -666,6 +695,10 @@ Route::get('v1/nha-tuyen-dung/cong-ty/hr-audit-logs', [NhaTuyenDungCongTyControl
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
     ->name('nha-tuyen-dung.cong-ty.hr-audit-logs.index');
 
+Route::get('v1/nha-tuyen-dung/audit-logs', [NhaTuyenDungAuditLogController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner,admin_hr'])
+    ->name('nha-tuyen-dung.audit-logs.index');
+
 Route::get('v1/nha-tuyen-dung/loi-moi-cong-ty/da-nhan', [NhaTuyenDungCongTyController::class, 'receivedInvitations'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung'])
     ->name('nha-tuyen-dung.cong-ty.invitations.received');
@@ -706,6 +739,14 @@ Route::post('v1/nha-tuyen-dung/tin-tuyen-dungs/{id}/parse', [JdParsingController
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner,admin_hr,recruiter'])
     ->name('nha-tuyen-dung.tin-tuyen-dungs.parse');
 
+Route::get('v1/nha-tuyen-dung/tin-tuyen-dungs/{id}/shortlist', [NhaTuyenDungShortlistController::class, 'index'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
+    ->name('nha-tuyen-dung.tin-tuyen-dungs.shortlist');
+
+Route::post('v1/nha-tuyen-dung/tin-tuyen-dungs/{id}/shortlist/compare', [NhaTuyenDungShortlistController::class, 'compare'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
+    ->name('nha-tuyen-dung.tin-tuyen-dungs.shortlist.compare');
+
 
 // ============================================================
 // NHÓM 22: NHÀ TUYỂN DỤNG — Duyệt hồ sơ ứng tuyển (vai_tro = 1)
@@ -714,6 +755,18 @@ Route::post('v1/nha-tuyen-dung/tin-tuyen-dungs/{id}/parse', [JdParsingController
 Route::get('v1/nha-tuyen-dung/ung-tuyens', [NhaTuyenDungUngTuyenController::class, 'index'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
     ->name('nha-tuyen-dung.ung-tuyens.index');
+
+Route::get('v1/nha-tuyen-dung/ung-tuyens/notification-templates', [NhaTuyenDungUngTuyenController::class, 'notificationTemplates'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role'])
+    ->name('nha-tuyen-dung.ung-tuyens.notification-templates');
+
+Route::post('v1/nha-tuyen-dung/ung-tuyens/{id}/interview-copilot/generate', [NhaTuyenDungUngTuyenController::class, 'generateInterviewCopilot'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner,admin_hr,recruiter,interviewer'])
+    ->name('nha-tuyen-dung.ung-tuyens.interview-copilot.generate');
+
+Route::post('v1/nha-tuyen-dung/ung-tuyens/{id}/interview-copilot/evaluate', [NhaTuyenDungUngTuyenController::class, 'evaluateInterviewCopilot'])
+    ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner,admin_hr,recruiter,interviewer'])
+    ->name('nha-tuyen-dung.ung-tuyens.interview-copilot.evaluate');
 
 Route::patch('v1/nha-tuyen-dung/ung-tuyens/{id}/trang-thai', [NhaTuyenDungUngTuyenController::class, 'updateTrangThai'])
     ->middleware(['auth:sanctum', 'role:nha_tuyen_dung', 'company_role:owner,admin_hr,recruiter,interviewer'])

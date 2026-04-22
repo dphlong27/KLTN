@@ -1,7 +1,7 @@
 # Đề Xuất Bổ Sung Tính Năng Và Hoàn Thiện Hệ Thống
+
 source .venv/bin/activate
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
-
 
 Tài liệu này tổng hợp các đề xuất đã phân tích cho hệ thống hiện tại, nhằm:
 
@@ -39,7 +39,9 @@ Tuy nhiên, ngoài luồng ứng tuyển, vẫn còn một số phần:
 ## 2. Các Phần Cần Hoàn Thiện Hoặc Bổ Sung Trước
 
 ### 2.1. Mở rộng phần nhà tuyển dụng
+
 Hiện tại chỉ có 1 nhà tuyển dụng tạo tài khoản và quản lý 1 công ty
+
 - Bây giờ tôi muốn nâng cấp lên 1 nhà tuyển dụng tạo 1 tài khoản đại diện cho công ty (Người quản lý công ty)
 - Trong nhà tuyển dụng có thể cho phép tạo các HR để quản lý các luồng tuyển dụng và dễ dàng phân quyền hơn
 
@@ -424,3 +426,19 @@ Trong số các hướng đã phân tích, nhóm mạnh nhất và đáng làm n
 - Follow nhà tuyển dụng + Job Alert
 
 Đây là nhóm tính năng vừa phù hợp với codebase hiện tại, vừa có giá trị kỹ thuật, nghiệp vụ và khả năng demo tốt.
+
+Fix Code
+
+UI:
+
+- Thêm chọn ngày trong Tạo CV
+- IT thì có link github, ngành khác thì khác
+- Thêm tải xuống CV cho CV tự tạo
+
+Chức năng:
+
+- Admin add template
+- Convert pdf
+- Thanh toán momo
+- Premium
+

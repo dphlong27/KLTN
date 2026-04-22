@@ -1,8 +1,10 @@
 <script setup>
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { applicationService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
+import { getStoredUser } from '@/utils/authStorage'
+import { connectPrivateChannel } from '@/services/realtime'
 import { formatDateTimeVN, formatDateVN, formatHistoricalDateVN } from '@/utils/dateTime'
 import {
   APPLICATION_STATUS,
@@ -53,6 +55,7 @@ const pagination = reactive({
   to: 0,
 })
 const applicationListRef = ref(null)
+let applicationRealtimeChannel = null
 
 const statusTabs = computed(() => [
   { value: STATUS_ALL, label: 'Tất cả', total: statusTotals.all },
@@ -229,6 +232,11 @@ const fetchStatusTotals = async () => {
   }
 }
 
+const refreshApplicationsRealtime = async () => {
+  if (loading.value) return
+  await Promise.all([fetchApplications(pagination.current_page), fetchStatusTotals()])
+}
+
 const selectStatus = async (status) => {
   if (activeStatus.value === status) return
   activeStatus.value = status
@@ -380,6 +388,21 @@ watch(activeStatus, async () => {
 onMounted(async () => {
   await Promise.all([fetchApplications(), fetchStatusTotals()])
   await handleInterviewResponseFeedback()
+
+  const user = getStoredUser()
+  if (user?.id) {
+    applicationRealtimeChannel = connectPrivateChannel(`user.${user.id}`)
+    applicationRealtimeChannel?.listen('.application.changed', () => {
+      void refreshApplicationsRealtime()
+    })
+  }
+})
+
+onUnmounted(() => {
+  if (applicationRealtimeChannel) {
+    applicationRealtimeChannel.stopListening('.application.changed')
+    applicationRealtimeChannel = null
+  }
 })
 </script>
 

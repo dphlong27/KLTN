@@ -79,6 +79,16 @@ class AiClientService
         ]);
     }
 
+    public function tailorCvForJob(int $hoSoId, int $tinTuyenDungId, array $cvProfile = [], array $jdProfile = []): array
+    {
+        return $this->post('/generate/cv-tailoring', [
+            'ho_so_id' => $hoSoId,
+            'tin_tuyen_dung_id' => $tinTuyenDungId,
+            'cv_profile' => $cvProfile,
+            'jd_profile' => $jdProfile,
+        ]);
+    }
+
     public function semanticSearchJobs(string $query, array $documents, int $topK = 10): array
     {
         return $this->post('/search/semantic/jobs', [
@@ -151,6 +161,23 @@ class AiClientService
             'session_id' => $sessionId,
             'interview_context' => $interviewContext,
             'transcript' => $transcript,
+        ]);
+    }
+
+    public function generateInterviewCopilot(int $ungTuyenId, array $applicationContext = []): array
+    {
+        return $this->post('/interview/copilot/generate', [
+            'ung_tuyen_id' => $ungTuyenId,
+            'application_context' => $applicationContext,
+        ]);
+    }
+
+    public function evaluateInterviewCopilot(int $ungTuyenId, array $applicationContext = [], array $interviewNotes = []): array
+    {
+        return $this->post('/interview/copilot/evaluate', [
+            'ung_tuyen_id' => $ungTuyenId,
+            'application_context' => $applicationContext,
+            'interview_notes' => $interviewNotes,
         ]);
     }
 

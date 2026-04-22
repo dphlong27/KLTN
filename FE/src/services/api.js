@@ -455,6 +455,59 @@ export const adminMarketService = {
     }),
 }
 
+const buildAuditLogQuery = (options = {}) => {
+  const params = new URLSearchParams()
+  const keys = ['page', 'per_page', 'actor_id', 'actor_query', 'actor_role', 'company_id', 'action', 'scope', 'target_type', 'from', 'to']
+
+  keys.forEach((key) => {
+    const value = options[key]
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value)
+    }
+  })
+
+  return params.toString()
+}
+
+export const adminAuditLogService = {
+  getLogs: (options = {}) => {
+    const query = buildAuditLogQuery(options)
+    return apiCall(`/admin/audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
+export const notificationService = {
+  getNotifications: (options = {}) => {
+    const params = new URLSearchParams()
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.type) params.append('type', options.type)
+    if (options.unread_only) params.append('unread_only', '1')
+
+    const query = params.toString()
+    return apiCall(`/notifications${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getUnreadCount: () =>
+    apiCall('/notifications/unread-count', {
+      method: 'GET',
+    }),
+
+  markAsRead: (id) =>
+    apiCall(`/notifications/${id}/read`, {
+      method: 'PATCH',
+    }),
+
+  markAllAsRead: () =>
+    apiCall('/notifications/read-all', {
+      method: 'PATCH',
+    }),
+}
+
 export const adminJobPostingService = {
   getJobs: (options = {}) => {
     const params = new URLSearchParams()
@@ -897,6 +950,15 @@ export const employerCompanyService = {
     }),
 }
 
+export const employerAuditLogService = {
+  getLogs: (options = {}) => {
+    const query = buildAuditLogQuery(options)
+    return apiCall(`/nha-tuyen-dung/audit-logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
 export const employerJobService = {
   getJobs: (options = {}) => {
     const params = new URLSearchParams()
@@ -948,6 +1010,29 @@ export const employerJobService = {
     apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/parse`, {
       method: 'POST'
     }),
+
+  getShortlist: (id, options = {}) => {
+    const params = new URLSearchParams()
+    if (options.limit) params.append('limit', options.limit)
+    if (options.ai_explain !== undefined) params.append('ai_explain', options.ai_explain ? '1' : '0')
+    if (options.scope) params.append('scope', options.scope)
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/shortlist${query ? `?${query}` : ''}`, {
+      method: 'GET'
+    })
+  },
+
+  compareShortlistCandidates: (id, hoSoIds, options = {}) => {
+    const params = new URLSearchParams()
+    if (options.ai_explain !== undefined) params.append('ai_explain', options.ai_explain ? '1' : '0')
+
+    const query = params.toString()
+    return apiCall(`/nha-tuyen-dung/tin-tuyen-dungs/${id}/shortlist/compare${query ? `?${query}` : ''}`, {
+      method: 'POST',
+      body: JSON.stringify({ ho_so_ids: hoSoIds })
+    })
+  },
 }
 
 export const employerCandidateService = {
@@ -999,6 +1084,22 @@ export const employerApplicationService = {
     apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/trang-thai`, {
       method: 'PATCH',
       body: JSON.stringify(data)
+    }),
+
+  getNotificationTemplates: () =>
+    apiCall('/nha-tuyen-dung/ung-tuyens/notification-templates', {
+      method: 'GET',
+    }),
+
+  generateInterviewCopilot: (id) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-copilot/generate`, {
+      method: 'POST',
+    }),
+
+  evaluateInterviewCopilot: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-copilot/evaluate`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   resendInterviewEmail: (id) =>
@@ -1182,6 +1283,12 @@ export const profileService = {
   parseProfileCv: (id) =>
     apiCall(`/ung-vien/ho-sos/${id}/parse`, {
       method: 'POST'
+    }),
+
+  tailorProfileForJob: (id, jobId, data = {}) =>
+    apiCall(`/ung-vien/ho-sos/${id}/tailor/${jobId}`, {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 }
 

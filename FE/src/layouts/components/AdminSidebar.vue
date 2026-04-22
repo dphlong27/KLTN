@@ -23,7 +23,7 @@ defineProps({
         subtitle="Management Console"
       />
     </div>
-    <nav class="flex-1 space-y-1 px-4">
+    <nav class="flex-1 space-y-1 overflow-y-auto px-4">
       <RouterLink to="/admin" exact-active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Tổng quan' : ''">
         <span class="material-symbols-outlined text-[22px]">dashboard</span>
         <span v-if="!collapsed" class="text-sm">Tổng quan</span>
@@ -72,9 +72,13 @@ defineProps({
         <span class="material-symbols-outlined text-[22px]">palette</span>
         <span v-if="!collapsed" class="text-sm">Template CV</span>
       </RouterLink>
-      <RouterLink to="/admin/stats" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Thống kê' : ''">
+      <RouterLink to="/admin/audit-logs" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Nhật ký hệ thống' : ''">
+        <span class="material-symbols-outlined text-[22px]">history</span>
+        <span v-if="!collapsed" class="text-sm">Nhật ký hệ thống</span>
+      </RouterLink>
+      <RouterLink to="/admin/stats" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Báo cáo & phân tích' : ''">
         <span class="material-symbols-outlined text-[22px]">leaderboard</span>
-        <span v-if="!collapsed" class="text-sm">Thống kê</span>
+        <span v-if="!collapsed" class="text-sm">Báo cáo & phân tích</span>
       </RouterLink>
     </nav>
   </aside>

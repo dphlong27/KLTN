@@ -32,6 +32,7 @@ class InterviewScheduledNotification extends Notification
     public function __construct(
         private readonly UngTuyen $ungTuyen,
         private readonly bool $isRescheduled = false,
+        private readonly bool $isReminder = false,
     ) {
     }
 
@@ -59,12 +60,16 @@ class InterviewScheduledNotification extends Notification
         $thoiGian = $ngayHen
             ? $ngayHen->timezone(self::DISPLAY_TIMEZONE)->format('H:i d/m/Y')
             : 'Chưa xác định';
-        $subject = $this->isRescheduled
+        $subject = $this->isReminder
+            ? "Nhac lich phong van - {$tenViTri} tai {$tenCongTy}"
+            : ($this->isRescheduled
             ? "Cap nhat lich phong van - {$tenViTri} tai {$tenCongTy}"
-            : "Thu moi phong van - {$tenViTri} tai {$tenCongTy}";
-        $previewText = $this->isRescheduled
+            : "Thu moi phong van - {$tenViTri} tai {$tenCongTy}");
+        $previewText = $this->isReminder
+            ? 'Day la email nhac lich phong van sap dien ra cua ban.'
+            : ($this->isRescheduled
             ? 'Nha tuyen dung vua cap nhat lich phong van cua ban.'
-            : 'Nha tuyen dung vua dat lich phong van cho ho so ung tuyen cua ban.';
+            : 'Nha tuyen dung vua dat lich phong van cho ho so ung tuyen cua ban.');
         $candidateId = (int) ($ungTuyen->hoSo?->nguoiDung?->id ?? $notifiable->id ?? 0);
         $acceptUrl = null;
         $declineUrl = null;
@@ -109,6 +114,7 @@ class InterviewScheduledNotification extends Notification
                 'subjectText' => $subject,
                 'previewText' => $previewText,
                 'isRescheduled' => $this->isRescheduled,
+                'isReminder' => $this->isReminder,
                 'candidateName' => $notifiable->ho_ten ?: 'bạn',
                 'jobTitle' => $tenViTri,
                 'companyName' => $tenCongTy,

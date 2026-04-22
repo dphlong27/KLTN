@@ -12,6 +12,7 @@ const templates = ref([])
 const pagination = ref(null)
 const modalOpen = ref(false)
 const editingId = ref(null)
+const templateToDelete = ref(null)
 
 const filters = reactive({
   search: '',
@@ -133,13 +134,23 @@ const toggleStatus = async (template) => {
   }
 }
 
-const deleteTemplate = async (template) => {
-  if (!window.confirm(`Xóa template "${template.ten_template}"?`)) return
+const openDeleteModal = (template) => {
+  templateToDelete.value = template
+}
 
-  deletingId.value = template.id
+const closeDeleteModal = () => {
+  if (deletingId.value) return
+  templateToDelete.value = null
+}
+
+const deleteTemplate = async () => {
+  if (!templateToDelete.value || deletingId.value) return
+
+  deletingId.value = templateToDelete.value.id
   try {
-    await adminCvTemplateService.deleteTemplate(template.id)
+    await adminCvTemplateService.deleteTemplate(templateToDelete.value.id)
     notify.success('Đã xóa template CV.')
+    templateToDelete.value = null
     await fetchTemplates()
   } catch (error) {
     notify.apiError(error, 'Không thể xóa template CV.')
@@ -252,7 +263,7 @@ onMounted(fetchTemplates)
                   <button class="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800" @click="toggleStatus(template)">
                     {{ Number(template.trang_thai) === 1 ? 'Ẩn' : 'Hiện' }}
                   </button>
-                  <button class="rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-900/30 dark:text-rose-300 dark:hover:bg-rose-900/10" :disabled="deletingId === template.id" @click="deleteTemplate(template)">
+                  <button class="rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:border-rose-900/30 dark:text-rose-300 dark:hover:bg-rose-900/10" :disabled="deletingId === template.id" @click="openDeleteModal(template)">
                     {{ deletingId === template.id ? 'Đang xóa...' : 'Xóa' }}
                   </button>
                 </div>
@@ -315,6 +326,41 @@ onMounted(fetchTemplates)
           <button class="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold dark:border-slate-700" @click="closeModal">Hủy</button>
           <button class="rounded-xl bg-[#2463eb] px-4 py-3 text-sm font-bold text-white disabled:opacity-60" :disabled="saving" @click="submitForm">
             {{ saving ? 'Đang lưu...' : (isEditing ? 'Lưu thay đổi' : 'Tạo template') }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="templateToDelete"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6"
+      @click.self="closeDeleteModal"
+    >
+      <div class="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-50 text-rose-600 dark:bg-rose-900/20 dark:text-rose-300">
+          <span class="material-symbols-outlined">delete_forever</span>
+        </div>
+        <h3 class="mt-5 text-xl font-black text-slate-900 dark:text-white">Xóa template CV?</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+          Template <span class="font-semibold text-slate-900 dark:text-white">{{ templateToDelete.ten_template }}</span>
+          sẽ bị xóa khỏi hệ thống. Hành động này không thể hoàn tác.
+        </p>
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+            :disabled="Boolean(deletingId)"
+            type="button"
+            @click="closeDeleteModal"
+          >
+            Hủy
+          </button>
+          <button
+            class="rounded-xl bg-rose-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="Boolean(deletingId)"
+            type="button"
+            @click="deleteTemplate"
+          >
+            {{ deletingId ? 'Đang xóa...' : 'Xóa template' }}
           </button>
         </div>
       </div>

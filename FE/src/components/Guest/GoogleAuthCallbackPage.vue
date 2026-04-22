@@ -14,12 +14,12 @@ const errorMessage = ref('')
 const getHomeByRole = (role) => {
   switch (Number(role)) {
     case 1:
-      return '/employer'
+      return '/employer/home'
     case 2:
       return '/admin'
     case 0:
     default:
-      return '/dashboard'
+      return '/'
   }
 }
 

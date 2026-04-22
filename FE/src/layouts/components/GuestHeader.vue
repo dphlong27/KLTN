@@ -36,14 +36,14 @@ const accountLabel = computed(() => {
   return 'Ứng viên đang đăng nhập'
 })
 const dashboardLink = computed(() => {
-  if (currentRole.value === 1) return '/employer'
+  if (currentRole.value === 1) return '/employer/home'
   if (currentRole.value === 2) return '/admin'
-  return '/dashboard'
+  return '/'
 })
 const dashboardText = computed(() => {
-  if (currentRole.value === 1) return 'Vào khu vực tuyển dụng'
+  if (currentRole.value === 1) return 'Vào trang chủ tuyển dụng'
   if (currentRole.value === 2) return 'Vào trang quản trị'
-  return 'Vào dashboard'
+  return 'Về trang chủ ứng viên'
 })
 
 watch(

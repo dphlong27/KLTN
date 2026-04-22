@@ -27,6 +27,12 @@ class CapNhatTrangThaiRequest extends FormRequest
                 'date',
                 function (string $attribute, mixed $value, \Closure $fail): void {
                     try {
+                        $targetStatus = (int) $this->input('trang_thai');
+
+                        if ($targetStatus > UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN) {
+                            return;
+                        }
+
                         if (Carbon::parse((string) $value, 'UTC')->lt(now('UTC'))) {
                             $fail('Ngày giờ hẹn phỏng vấn phải lớn hơn hoặc bằng thời điểm hiện tại.');
                         }

@@ -62,6 +62,7 @@ export const useEmployerCompanyPermissions = () => {
   const canProcessApplications = computed(() => Boolean(permissions.value.co_the_xu_ly_ung_tuyen))
   const canManageMembers = computed(() => Boolean(permissions.value.co_the_quan_ly_thanh_vien))
   const canManageAllAssignments = computed(() => ['owner', 'admin_hr'].includes(currentInternalRole.value || ''))
+  const canViewCompanyAuditLogs = computed(() => ['owner', 'admin_hr'].includes(currentInternalRole.value || ''))
 
   return {
     company: readonly(company),
@@ -78,6 +79,7 @@ export const useEmployerCompanyPermissions = () => {
     canProcessApplications,
     canManageMembers,
     canManageAllAssignments,
+    canViewCompanyAuditLogs,
     permissionsLoading: readonly(loading),
     permissionsLoaded: readonly(loaded),
     ensurePermissionsLoaded: loadEmployerCompanyPermissions,

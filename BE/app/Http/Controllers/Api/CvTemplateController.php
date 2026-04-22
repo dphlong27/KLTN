@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\CvTemplate;
+use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,6 +23,18 @@ class CvTemplateController extends Controller
             'thu_tu_hien_thi' => (int) $template->thu_tu_hien_thi,
             'created_at' => optional($template->created_at)?->toISOString(),
             'updated_at' => optional($template->updated_at)?->toISOString(),
+        ];
+    }
+
+    private function templateAuditSnapshot(CvTemplate $template): array
+    {
+        return [
+            'id' => $template->id,
+            'ma_template' => $template->ma_template,
+            'ten_template' => $template->ten_template,
+            'bo_cuc' => $template->bo_cuc,
+            'trang_thai' => (int) $template->trang_thai,
+            'thu_tu_hien_thi' => (int) $template->thu_tu_hien_thi,
         ];
     }
 
@@ -93,6 +106,15 @@ class CvTemplateController extends Controller
             'trang_thai' => (int) ($data['trang_thai'] ?? CvTemplate::TRANG_THAI_HIEN),
             'thu_tu_hien_thi' => (int) ($data['thu_tu_hien_thi'] ?? 0),
         ]);
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_cv_template_created',
+            description: "Admin tạo template CV {$template->ten_template}.",
+            target: $template,
+            after: $this->templateAuditSnapshot($template),
+            metadata: ['scope' => 'admin_cv_template'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -105,6 +127,7 @@ class CvTemplateController extends Controller
     {
         $template = CvTemplate::findOrFail($id);
         $data = $this->validatePayload($request, $template);
+        $before = $this->templateAuditSnapshot($template);
 
         $template->update([
             'ma_template' => trim((string) $data['ma_template']),
@@ -115,6 +138,16 @@ class CvTemplateController extends Controller
             'trang_thai' => (int) ($data['trang_thai'] ?? $template->trang_thai),
             'thu_tu_hien_thi' => (int) ($data['thu_tu_hien_thi'] ?? $template->thu_tu_hien_thi),
         ]);
+        app(AuditLogService::class)->logModelAction(
+            actor: $request->user(),
+            action: 'admin_cv_template_updated',
+            description: "Admin cập nhật template CV {$template->ten_template}.",
+            target: $template,
+            before: $before,
+            after: $this->templateAuditSnapshot($template->fresh()),
+            metadata: ['scope' => 'admin_cv_template'],
+            request: $request,
+        );
 
         return response()->json([
             'success' => true,
@@ -126,10 +159,20 @@ class CvTemplateController extends Controller
     public function toggleStatus(int $id): JsonResponse
     {
         $template = CvTemplate::findOrFail($id);
+        $before = $this->templateAuditSnapshot($template);
         $template->trang_thai = (int) $template->trang_thai === CvTemplate::TRANG_THAI_HIEN
             ? CvTemplate::TRANG_THAI_AN
             : CvTemplate::TRANG_THAI_HIEN;
         $template->save();
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_cv_template_status_toggled',
+            description: "Admin đổi trạng thái template CV {$template->ten_template}.",
+            target: $template,
+            before: $before,
+            after: $this->templateAuditSnapshot($template),
+            metadata: ['scope' => 'admin_cv_template'],
+        );
 
         return response()->json([
             'success' => true,
@@ -141,7 +184,16 @@ class CvTemplateController extends Controller
     public function destroy(int $id): JsonResponse
     {
         $template = CvTemplate::findOrFail($id);
+        $before = $this->templateAuditSnapshot($template);
         $template->delete();
+        app(AuditLogService::class)->logModelAction(
+            actor: auth()->user(),
+            action: 'admin_cv_template_deleted',
+            description: "Admin xóa template CV {$before['ten_template']}.",
+            target: $template,
+            before: $before,
+            metadata: ['scope' => 'admin_cv_template'],
+        );
 
         return response()->json([
             'success' => true,

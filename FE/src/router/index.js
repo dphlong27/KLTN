@@ -9,7 +9,8 @@ const ROLE_ADMIN = 2
 const getAuthState = () => {
   const token = getAuthToken()
   const user = getStoredUser()
-  const role = typeof user?.vai_tro === 'number' ? user.vai_tro : null
+  const normalizedRole = user?.vai_tro !== undefined && user?.vai_tro !== null ? Number(user.vai_tro) : null
+  const role = Number.isNaN(normalizedRole) ? null : normalizedRole
 
   return {
     token,
@@ -22,12 +23,12 @@ const getAuthState = () => {
 const getHomeByRole = (role) => {
   switch (role) {
     case ROLE_EMPLOYER:
-      return '/employer'
+      return '/employer/home'
     case ROLE_ADMIN:
       return '/admin'
     case ROLE_CANDIDATE:
     default:
-      return '/dashboard'
+      return '/'
   }
 }
 
@@ -224,6 +225,12 @@ const routes = [
   },
     // Employer pages
   {
+    path: '/employer/home',
+    name: 'EmployerHome',
+    component: () => import('@/components/Employer/EmployerHomePage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
+  },
+  {
     path: '/employer',
     name: 'EmployerDashboard',
     component: () => import('@/components/Employer/EmployerDashboardPage.vue'),
@@ -266,6 +273,12 @@ const routes = [
     meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
   },
   {
+    path: '/employer/audit-logs',
+    name: 'EmployerAuditLogs',
+    component: () => import('@/components/Employer/EmployerAuditLogPage.vue'),
+    meta: { layout: 'employer', requiresAuth: true, role: ROLE_EMPLOYER }
+  },
+  {
     path: '/employer/profile',
     name: 'EmployerProfile',
     component: () => import('@/components/Employer/EmployerProfilePage.vue'),
@@ -282,6 +295,12 @@ const routes = [
     path: '/admin/profile',
     name: 'AdminProfile',
     component: () => import('@/components/Admin/AdminProfilePage.vue'),
+    meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN }
+  },
+  {
+    path: '/admin/audit-logs',
+    name: 'AdminAuditLogs',
+    component: () => import('@/components/Admin/AdminAuditLogPage.vue'),
     meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN }
   },
   {
@@ -369,6 +388,14 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = getAuthState()
 
+  if (to.path === '/' && auth.isAuthenticated && [ROLE_EMPLOYER, ROLE_ADMIN].includes(auth.role)) {
+    return getHomeByRole(auth.role)
+  }
+
+  if (to.meta?.guestOnly && auth.isAuthenticated) {
+    return getHomeByRole(auth.role)
+  }
+
   if (to.meta?.requiresAuth && !auth.isAuthenticated) {
     return {
       path: '/login',
@@ -381,7 +408,7 @@ router.beforeEach(async (to) => {
       await authService.getProfile()
     } catch (error) {
       if (error?.status === 401) {
-        return '/'
+        return '/login'
       }
     }
   }

@@ -24,6 +24,7 @@ const currentCandidate = ref(getStoredCandidate())
 const selectedPersonalFieldKeys = ref([])
 const detailModalOpen = ref(false)
 const selectedProfileDetail = ref(null)
+const profileToDelete = ref(null)
 
 const educationOptions = [
   { value: 'trung_hoc', label: 'Trung học' },
@@ -348,15 +349,24 @@ const toggleProfileStatus = async (profile) => {
   }
 }
 
-const deleteProfile = async (profile) => {
+const openDeleteProfileModal = (profile) => {
   if (deletingId.value) return
-  const confirmed = window.confirm(`Bạn có chắc muốn xóa hồ sơ "${profile.tieu_de_ho_so}" không?`)
-  if (!confirmed) return
+  profileToDelete.value = profile
+}
 
-  deletingId.value = profile.id
+const closeDeleteProfileModal = () => {
+  if (deletingId.value) return
+  profileToDelete.value = null
+}
+
+const deleteProfile = async () => {
+  if (!profileToDelete.value || deletingId.value) return
+
+  deletingId.value = profileToDelete.value.id
   try {
-    await profileService.deleteProfile(profile.id)
+    await profileService.deleteProfile(profileToDelete.value.id)
     notify.success('Đã xóa hồ sơ thành công.')
+    profileToDelete.value = null
     await fetchProfiles()
   } catch (error) {
     notify.apiError(error, 'Không thể xóa hồ sơ.')
@@ -648,7 +658,7 @@ onMounted(fetchProfiles)
             <button
               class="flex items-center justify-center size-9 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
               type="button"
-              @click="deleteProfile(profile)"
+              @click="openDeleteProfileModal(profile)"
             >
               <span class="material-symbols-outlined text-[18px]">
                 {{ deletingId === profile.id ? 'hourglass_top' : 'delete' }}
@@ -786,6 +796,41 @@ onMounted(fetchProfiles)
           </button>
         </div>
       </div>
+      </div>
+    </div>
+
+    <div
+      v-if="profileToDelete"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 px-4 py-6 backdrop-blur-sm"
+      @click.self="closeDeleteProfileModal"
+    >
+      <div class="w-full max-w-md rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+        <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+          <span class="material-symbols-outlined">delete_forever</span>
+        </div>
+        <h3 class="mt-5 text-xl font-black text-slate-900">Xóa hồ sơ/CV?</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-500">
+          Hồ sơ <span class="font-semibold text-slate-900">{{ profileToDelete.tieu_de_ho_so }}</span>
+          sẽ bị xóa khỏi danh sách CV của bạn. Hành động này không thể hoàn tác.
+        </p>
+        <div class="mt-6 flex justify-end gap-3">
+          <button
+            class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+            :disabled="Boolean(deletingId)"
+            type="button"
+            @click="closeDeleteProfileModal"
+          >
+            Hủy
+          </button>
+          <button
+            class="rounded-2xl bg-red-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="Boolean(deletingId)"
+            type="button"
+            @click="deleteProfile"
+          >
+            {{ deletingId ? 'Đang xóa...' : 'Xóa hồ sơ' }}
+          </button>
+        </div>
       </div>
     </div>
 

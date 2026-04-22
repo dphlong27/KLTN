@@ -41,7 +41,7 @@ const forceLogoutIfSessionExpired = async () => {
       clearAuthStorage()
 
       if (route.meta?.requiresAuth) {
-        await router.replace('/')
+        await router.replace('/login')
       }
     }
   } finally {
@@ -57,7 +57,7 @@ const handleVisibilityChange = async () => {
 
 const handleAuthInvalidated = async () => {
   if (route.meta?.requiresAuth) {
-    await router.replace('/')
+    await router.replace('/login')
   }
 }
 
