@@ -84,6 +84,14 @@ const formatJobDate = (job) => {
   return `${prefix} ${Math.max(Math.floor(diffHours / 24), 1)} ngày trước`
 }
 
+const smartMatchMeta = (match) => {
+  const score = Number(match?.match_score || 0)
+  if (score >= 80) return { label: 'Rất phù hợp', classes: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' }
+  if (score >= 65) return { label: 'Phù hợp cao', classes: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300' }
+  if (score >= 50) return { label: 'Nên xem', classes: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' }
+  return { label: 'Có tín hiệu', classes: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300' }
+}
+
 const fetchFollowedCompanies = async (page = 1) => {
   loading.value = true
   try {
@@ -262,13 +270,22 @@ onUnmounted(() => {
           Quản lý những doanh nghiệp bạn đang theo dõi và xem nhanh các hoạt động tuyển dụng mới nhất từ họ.
         </p>
       </div>
-      <RouterLink
-        :to="{ name: 'CompanyList' }"
-        class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition-all hover:from-blue-500 hover:to-indigo-400"
-      >
-        <span class="material-symbols-outlined text-xl">travel_explore</span>
-        Khám phá thêm công ty
-      </RouterLink>
+      <div class="flex flex-wrap gap-3">
+        <RouterLink
+          :to="{ name: 'CompanyList' }"
+          class="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-500 px-5 py-3 font-semibold text-white shadow-lg shadow-blue-500/20 transition-all hover:from-blue-500 hover:to-indigo-400"
+        >
+          <span class="material-symbols-outlined text-xl">travel_explore</span>
+          Khám phá thêm công ty
+        </RouterLink>
+        <RouterLink
+          to="/smart-job-alerts"
+          class="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-5 py-3 font-semibold text-blue-700 transition hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300"
+        >
+          <span class="material-symbols-outlined text-xl">notifications_active</span>
+          Smart Job Alert
+        </RouterLink>
+      </div>
     </div>
 
     <div class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
@@ -422,6 +439,14 @@ onUnmounted(() => {
               >
                 <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                   <div>
+                    <div v-if="job.smart_match" class="mb-2 flex flex-wrap items-center gap-2">
+                      <span class="rounded-full px-2.5 py-1 text-xs font-bold" :class="smartMatchMeta(job.smart_match).classes">
+                        {{ smartMatchMeta(job.smart_match).label }} • {{ Math.round(job.smart_match.match_score || 0) }}%
+                      </span>
+                      <span v-for="skill in job.smart_match.matched_skills?.slice(0, 3)" :key="skill" class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                        {{ skill }}
+                      </span>
+                    </div>
                     <RouterLink
                       :to="{ name: 'JobDetail', params: { id: job.id } }"
                       class="font-bold text-slate-900 hover:text-blue-600 dark:text-white dark:hover:text-blue-300"

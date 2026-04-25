@@ -5,6 +5,7 @@ import { employerJobService, jobService } from '@/services/api'
 import { useEmployerCompanyPermissions } from '@/composables/useEmployerCompanyPermissions'
 import { useNotify } from '@/composables/useNotify'
 import { formatDateTimeVN, toDateTimeLocalInputVN } from '@/utils/dateTime'
+import { VIETNAM_PROVINCES_34 } from '@/constants/vietnamProvinces'
 
 const notify = useNotify()
 const {
@@ -777,34 +778,40 @@ watch(expiryDate, (value) => {
 
   <div
     v-if="showModal"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm"
+    class="fixed inset-0 z-50 overflow-y-auto bg-slate-950/55 backdrop-blur-sm"
     @click.self="closeModal"
   >
-      <div class="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-2xl">
-        <div class="flex items-start justify-between gap-4">
+    <div class="flex min-h-full items-center justify-center px-4 py-6">
+      <div class="flex max-h-[calc(100vh-3rem)] w-full max-w-4xl flex-col overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div class="flex items-start justify-between border-b border-slate-100 px-6 py-5">
           <div>
-            <h2 class="text-2xl font-black text-white">{{ isEditing ? 'Cập nhật tin tuyển dụng' : 'Tạo tin tuyển dụng mới' }}</h2>
-            <p class="mt-1 text-sm text-slate-400">Giữ phong cách cũ nhưng nối trực tiếp vào dữ liệu thật của hệ thống.</p>
+            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-blue-500">{{ isEditing ? 'Chỉnh sửa tin' : 'Tạo tin mới' }}</p>
+            <h2 class="mt-2 text-2xl font-bold text-slate-900">{{ isEditing ? 'Cập nhật tin tuyển dụng' : 'Tạo tin tuyển dụng mới' }}</h2>
           </div>
-          <button class="rounded-lg p-2 text-slate-400 transition hover:bg-slate-800 hover:text-white" type="button" @click="closeModal">
+          <button class="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700" type="button" @click="closeModal">
             <span class="material-symbols-outlined">close</span>
           </button>
         </div>
 
-        <div class="mt-6 grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div class="grid flex-1 grid-cols-1 gap-5 overflow-y-auto px-6 py-6 md:grid-cols-2">
           <label class="block md:col-span-2">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Tiêu đề tin tuyển dụng</span>
-            <input v-model="jobForm.tieu_de" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" type="text">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Tiêu đề tin tuyển dụng</span>
+            <input v-model="jobForm.tieu_de" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" type="text">
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Địa điểm làm việc</span>
-            <input v-model="jobForm.dia_diem_lam_viec" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" type="text">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Địa điểm làm việc</span>
+            <select v-model="jobForm.dia_diem_lam_viec" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
+              <option value="">Chọn tỉnh/thành</option>
+              <option v-for="province in VIETNAM_PROVINCES_34" :key="province" :value="province">
+                {{ province }}
+              </option>
+            </select>
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Hình thức làm việc</span>
-            <select v-model="jobForm.hinh_thuc_lam_viec" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Hình thức làm việc</span>
+            <select v-model="jobForm.hinh_thuc_lam_viec" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
               <option value="Toàn thời gian">Toàn thời gian</option>
               <option value="Bán thời gian">Bán thời gian</option>
               <option value="Thực tập">Thực tập</option>
@@ -814,32 +821,32 @@ watch(expiryDate, (value) => {
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Cấp bậc</span>
-            <input v-model="jobForm.cap_bac" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" placeholder="Junior / Senior / Manager" type="text">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Cấp bậc</span>
+            <input v-model="jobForm.cap_bac" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Junior / Senior / Manager" type="text">
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Kinh nghiệm yêu cầu</span>
-            <input v-model="jobForm.kinh_nghiem_yeu_cau" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" placeholder="Ví dụ: 2 năm" type="text">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Kinh nghiệm yêu cầu</span>
+            <input v-model="jobForm.kinh_nghiem_yeu_cau" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" placeholder="Ví dụ: 2 năm" type="text">
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Số lượng tuyển</span>
-            <input v-model.number="jobForm.so_luong_tuyen" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" min="1" type="number">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Số lượng tuyển</span>
+            <input v-model.number="jobForm.so_luong_tuyen" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" min="1" type="number">
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Mức lương (VND)</span>
-            <input v-model="jobForm.muc_luong" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]" min="0" placeholder="18000000" type="number">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Mức lương (VND)</span>
+            <input v-model="jobForm.muc_luong" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100" min="0" placeholder="18000000" type="number">
           </label>
 
           <div class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Ngày giờ hết hạn</span>
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Ngày giờ hết hạn</span>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_150px]">
               <div class="relative">
                 <input
                   v-model="expiryDateDisplay"
-                  class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition focus:border-[#2463eb]"
+                  class="w-full rounded-2xl border border-slate-200 px-4 py-3 pr-12 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   placeholder="dd/mm/yyyy"
                   type="text"
                   @blur="commitExpiryDateDisplay"
@@ -853,7 +860,7 @@ watch(expiryDate, (value) => {
                   type="date"
                 >
                 <button
-                  class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-white/90 transition hover:text-white"
+                  class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-slate-500 transition hover:text-blue-600"
                   type="button"
                   @click="openNativePicker(expiryDateInput)"
                 >
@@ -864,12 +871,12 @@ watch(expiryDate, (value) => {
                 <input
                   ref="expiryTimeInput"
                   v-model="expiryTime"
-                  class="datetime-picker-white w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 pr-12 text-sm text-white outline-none transition focus:border-[#2463eb]"
+                  class="datetime-picker-white w-full rounded-2xl border border-slate-200 px-4 py-3 pr-12 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
                   step="60"
                   type="time"
                 >
                 <button
-                  class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-white/90 transition hover:text-white"
+                  class="absolute inset-y-0 right-0 inline-flex w-11 items-center justify-center text-slate-500 transition hover:text-blue-600"
                   type="button"
                   @click="openNativePicker(expiryTimeInput)"
                 >
@@ -877,43 +884,43 @@ watch(expiryDate, (value) => {
                 </button>
               </div>
             </div>
-            <p class="mt-2 text-xs text-slate-400">
+            <p class="mt-2 text-xs text-slate-500">
               Có thể gõ trực tiếp hoặc bấm chọn. Nếu chỉ chọn ngày, hệ thống sẽ lấy giờ mặc định là 23:59.
             </p>
           </div>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Trạng thái ban đầu</span>
-            <select v-model="jobForm.trang_thai" class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb]">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Trạng thái ban đầu</span>
+            <select v-model="jobForm.trang_thai" class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100">
               <option :value="1">Đang hoạt động</option>
               <option :value="0">Tạm ngưng</option>
             </select>
           </label>
 
           <label class="block">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">HR phụ trách</span>
+            <span class="mb-2 block text-sm font-semibold text-slate-700">HR phụ trách</span>
             <select
               v-model="jobForm.hr_phu_trach_id"
               :disabled="!canManageAllAssignments"
-              class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-white outline-none transition focus:border-[#2463eb] disabled:cursor-not-allowed disabled:opacity-60"
+              class="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <option value="">Tự gán theo người thao tác</option>
               <option v-for="member in assignableMembers" :key="member.id" :value="String(member.id)">
                 {{ member.label }}
               </option>
             </select>
-            <p v-if="!canManageAllAssignments" class="mt-2 text-xs text-slate-400">
+            <p v-if="!canManageAllAssignments" class="mt-2 text-xs text-slate-500">
               Với vai trò {{ currentInternalRoleLabel }}, tin tuyển dụng mới hoặc chỉnh sửa sẽ luôn gắn cho chính bạn.
             </p>
           </label>
 
           <div class="md:col-span-2">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Ngành nghề</span>
-            <div class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950 p-3 sm:grid-cols-2">
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Ngành nghề</span>
+            <div class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto rounded-2xl border border-slate-200 p-3 sm:grid-cols-2">
               <label
                 v-for="industry in industries"
                 :key="industry.id"
-                class="inline-flex items-center gap-2 rounded-lg px-2 py-1 text-sm text-slate-300 transition hover:bg-slate-800"
+                class="inline-flex items-center gap-2 rounded-xl px-2 py-1 text-sm text-slate-700 transition hover:bg-slate-50"
               >
                 <input
                   :value="industry.id"
@@ -932,20 +939,20 @@ watch(expiryDate, (value) => {
           </div>
 
           <label class="block md:col-span-2">
-            <span class="mb-2 block text-sm font-semibold text-slate-300">Mô tả công việc</span>
+            <span class="mb-2 block text-sm font-semibold text-slate-700">Mô tả công việc</span>
             <textarea
               v-model="jobForm.mo_ta_cong_viec"
-              class="min-h-[180px] w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm leading-7 text-white outline-none transition focus:border-[#2463eb]"
+              class="min-h-[180px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm leading-7 text-slate-700 outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
             />
           </label>
         </div>
 
-        <div class="mt-6 flex justify-end gap-3">
-          <button class="rounded-xl border border-slate-700 px-5 py-3 text-sm font-bold text-slate-300 transition hover:bg-slate-800" type="button" @click="closeModal">
+        <div class="flex flex-col gap-3 border-t border-slate-100 px-6 py-5 sm:flex-row sm:justify-end">
+          <button class="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50" type="button" @click="closeModal">
             Hủy
           </button>
           <button
-            class="rounded-xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-[#2463eb]/20 transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded-2xl bg-[#2463eb] px-5 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
             :disabled="saving || !canManageJobs"
             type="button"
             @click="submitJobForm"
@@ -1004,11 +1011,12 @@ watch(expiryDate, (value) => {
       </div>
     </div>
   </div>
+</div>
 </template>
 
 <style scoped>
 .datetime-picker-white {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 .datetime-picker-white::-webkit-calendar-picker-indicator {

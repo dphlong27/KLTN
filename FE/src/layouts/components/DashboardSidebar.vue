@@ -86,6 +86,10 @@ onBeforeUnmount(() => {
         <span class="material-symbols-outlined">apartment</span>
         <span v-if="!collapsed" class="text-sm">Công ty đã follow</span>
       </RouterLink>
+      <RouterLink to="/smart-job-alerts" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Smart Job Alert' : ''">
+        <span class="material-symbols-outlined">notifications_active</span>
+        <span v-if="!collapsed" class="text-sm">Smart Job Alert</span>
+      </RouterLink>
       <div v-if="!collapsed" class="px-3 pb-2 pt-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">AI Services</div>
       <RouterLink to="/ai-center/chatbot" active-class="active-nav" class="nav-link group flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 transition-colors font-medium hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'AI Center' : ''">
         <span class="material-symbols-outlined text-[#2463eb] group-hover:scale-110 transition-transform">auto_awesome</span>

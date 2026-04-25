@@ -5,6 +5,8 @@ import { getStoredEmployer } from '@/utils/authStorage'
 const company = ref(null)
 const loading = ref(false)
 const loaded = ref(false)
+const loadedForEmployerId = ref(null)
+let authResetListenerRegistered = false
 
 const defaultPermissions = {
   co_the_xem: false,
@@ -19,7 +21,36 @@ const normalizePermissions = (payload) => ({
   ...(payload || {}),
 })
 
+const currentStoredEmployerId = () => Number(getStoredEmployer()?.id || 0) || null
+
+const resetEmployerCompanyPermissions = () => {
+  company.value = null
+  loaded.value = false
+  loading.value = false
+  loadedForEmployerId.value = null
+}
+
+const ensureAuthResetListener = () => {
+  if (authResetListenerRegistered || typeof window === 'undefined') return
+
+  const reset = () => {
+    resetEmployerCompanyPermissions()
+  }
+
+  window.addEventListener('auth-changed', reset)
+  window.addEventListener('auth-invalidated', reset)
+  authResetListenerRegistered = true
+}
+
 const loadEmployerCompanyPermissions = async ({ force = false } = {}) => {
+  ensureAuthResetListener()
+
+  const employerId = currentStoredEmployerId()
+
+  if (loadedForEmployerId.value && loadedForEmployerId.value !== employerId) {
+    resetEmployerCompanyPermissions()
+  }
+
   if (loading.value) return company.value
   if (loaded.value && !force) return company.value
 
@@ -27,9 +58,11 @@ const loadEmployerCompanyPermissions = async ({ force = false } = {}) => {
   try {
     const response = await employerCompanyService.getCompany()
     company.value = response?.data || null
+    loadedForEmployerId.value = employerId
   } catch (error) {
     if (error?.status === 404) {
       company.value = null
+      loadedForEmployerId.value = employerId
     } else {
       throw error
     }
@@ -42,6 +75,8 @@ const loadEmployerCompanyPermissions = async ({ force = false } = {}) => {
 }
 
 export const useEmployerCompanyPermissions = () => {
+  ensureAuthResetListener()
+
   const currentEmployer = computed(() => getStoredEmployer() || null)
   const permissions = computed(() => normalizePermissions(company.value?.quyen_noi_bo))
   const companyMembers = computed(() => Array.isArray(company.value?.thanh_viens) ? company.value.thanh_viens : [])
@@ -62,7 +97,7 @@ export const useEmployerCompanyPermissions = () => {
   const canProcessApplications = computed(() => Boolean(permissions.value.co_the_xu_ly_ung_tuyen))
   const canManageMembers = computed(() => Boolean(permissions.value.co_the_quan_ly_thanh_vien))
   const canManageAllAssignments = computed(() => ['owner', 'admin_hr'].includes(currentInternalRole.value || ''))
-  const canViewCompanyAuditLogs = computed(() => ['owner', 'admin_hr'].includes(currentInternalRole.value || ''))
+  const canViewCompanyAuditLogs = computed(() => Boolean(permissions.value.co_the_xem))
 
   return {
     company: readonly(company),
@@ -84,5 +119,6 @@ export const useEmployerCompanyPermissions = () => {
     permissionsLoaded: readonly(loaded),
     ensurePermissionsLoaded: loadEmployerCompanyPermissions,
     refreshPermissions: () => loadEmployerCompanyPermissions({ force: true }),
+    resetPermissions: resetEmployerCompanyPermissions,
   }
 }

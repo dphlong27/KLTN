@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Events\CompanyFollowerCountUpdated;
 use App\Http\Controllers\Controller;
 use App\Models\CongTy;
+use App\Models\SmartJobAlert;
 use App\Models\TinTuyenDung;
 use App\Services\AuditLogService;
 use Illuminate\Http\JsonResponse;
@@ -62,14 +63,16 @@ class UngVienTheoDoiCongTyController extends Controller
 
         $data = $query->paginate((int) $request->get('per_page', 15));
 
-        $data->getCollection()->transform(function (CongTy $congTy) use ($recentJobsLimit) {
+        $userId = (int) $user->id;
+
+        $data->getCollection()->transform(function (CongTy $congTy) use ($recentJobsLimit, $userId) {
             $payload = $congTy->toArray();
             $payload['logo_url'] = $congTy->logo
                 ? url('/api/v1/cong-ty-logo?path=' . urlencode($congTy->logo))
                 : null;
             $payload['da_theo_doi'] = true;
             $payload['theo_doi_luc'] = optional($congTy->pivot?->created_at)->toISOString();
-            $payload['tin_tuyen_dungs'] = $congTy->tinTuyenDungs()
+            $jobs = $congTy->tinTuyenDungs()
                 ->select([
                     'id',
                     'tieu_de',
@@ -92,8 +95,34 @@ class UngVienTheoDoiCongTyController extends Controller
                 })
                 ->orderByRaw('COALESCE(reactivated_at, published_at, created_at) DESC')
                 ->limit($recentJobsLimit)
+                ->get();
+
+            $alertsByJobId = SmartJobAlert::query()
+                ->where('nguoi_dung_id', $userId)
+                ->whereIn('tin_tuyen_dung_id', $jobs->pluck('id')->all())
                 ->get()
-                ->toArray();
+                ->keyBy('tin_tuyen_dung_id');
+
+            $payload['tin_tuyen_dungs'] = $jobs
+                ->map(function (TinTuyenDung $job) use ($alertsByJobId) {
+                    $jobPayload = $job->toArray();
+                    $alert = $alertsByJobId->get($job->id);
+
+                    if ($alert) {
+                        $jobPayload['smart_match'] = [
+                            'id' => $alert->id,
+                            'match_score' => round((float) $alert->match_score, 1),
+                            'match_level' => $alert->match_level,
+                            'matched_skills' => $alert->matched_skills_json ?: [],
+                            'missing_skills' => $alert->missing_skills_json ?: [],
+                            'reasons' => $alert->reasons_json ?: [],
+                        ];
+                    }
+
+                    return $jobPayload;
+                })
+                ->values()
+                ->all();
 
             return $payload;
         });

@@ -19,7 +19,7 @@ const getHomeByRole = (role) => {
       return '/admin'
     case 0:
     default:
-      return '/'
+      return '/dashboard'
   }
 }
 

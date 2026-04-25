@@ -11,6 +11,7 @@ use App\Models\CongTy;
 use App\Models\TinTuyenDung;
 use App\Services\AppNotificationService;
 use App\Services\AuditLogService;
+use App\Services\SmartJobAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -24,6 +25,7 @@ class NhaTuyenDungTinTuyenDungController extends Controller
     public function __construct(
         private readonly AuditLogService $auditLogService,
         private readonly AppNotificationService $appNotificationService,
+        private readonly SmartJobAlertService $smartJobAlertService,
     ) {
     }
 
@@ -101,12 +103,22 @@ class NhaTuyenDungTinTuyenDungController extends Controller
             report($exception);
         }
 
+        $smartAlertRecipientIds = $this->smartJobAlertService->generateForActivatedJob($tin->fresh(), $activityType);
+        $genericRecipientIds = collect($event->recipientIds())
+            ->diff($smartAlertRecipientIds)
+            ->values()
+            ->all();
+
+        if (!$genericRecipientIds) {
+            return;
+        }
+
         $payload = $event->notificationPayload();
         $job = $payload['job'] ?? [];
         $company = $payload['company'] ?? [];
 
         $this->appNotificationService->createForUsers(
-            $event->recipientIds(),
+            $genericRecipientIds,
             (string) ($payload['type'] ?? 'followed_company_job'),
             (string) (($payload['activity_type'] ?? '') === FollowedCompanyJobActivated::TYPE_REOPENED
                 ? 'Công ty bạn theo dõi vừa mở lại tin tuyển dụng'

@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { cvTemplateService, jobService, profileService } from '@/services/api'
+import { cvBuilderAiService, cvTemplateService, jobService, profileService } from '@/services/api'
 import { useNotify } from '@/composables/useNotify'
 import { getStoredCandidate } from '@/utils/authStorage'
 import ProfileCvPreview from '@/components/Dashboard/ProfileCvPreview.vue'
@@ -34,6 +34,13 @@ const saving = ref(false)
 const loadingIndustries = ref(false)
 const loadingTemplates = ref(false)
 const previewModalOpen = ref(false)
+const aiWritingPanelOpen = ref(false)
+const aiWritingLoadingKey = ref('')
+const aiWritingSection = ref('summary')
+const aiWritingTone = ref('professional')
+const aiWritingSuggestions = ref([])
+const aiWritingSkillSuggestions = ref([])
+const aiWritingTargetIndex = ref(null)
 const currentCandidate = ref(getStoredCandidate())
 const industryOptions = ref([])
 const selectedIndustryId = ref('')
@@ -51,6 +58,21 @@ const educationOptions = [
   { value: 'thac_si', label: 'Thạc sĩ' },
   { value: 'tien_si', label: 'Tiến sĩ' },
   { value: 'khac', label: 'Khác' },
+]
+
+const cvAiWritingSections = [
+  { value: 'summary', label: 'Mô tả bản thân' },
+  { value: 'career_goal', label: 'Mục tiêu nghề nghiệp' },
+  { value: 'experience', label: 'Mô tả kinh nghiệm' },
+  { value: 'project', label: 'Mô tả dự án/thành tựu' },
+  { value: 'skills', label: 'Gợi ý kỹ năng' },
+]
+
+const cvAiWritingTones = [
+  { value: 'professional', label: 'Chuyên nghiệp' },
+  { value: 'concise', label: 'Ngắn gọn' },
+  { value: 'impact', label: 'Nhấn mạnh thành tựu' },
+  { value: 'fresher', label: 'Fresher/Junior' },
 ]
 
 const createSkillItem = (ten = '', muc_do = 'kha') => ({ ten, muc_do })
@@ -154,6 +176,9 @@ const selectedTemplateMeta = computed(() =>
 )
 const selectedTemplateUsesPhoto = computed(() =>
   templateUsesCvPhoto(form.mau_cv, selectedTemplateMeta.value?.layout || form.bo_cuc_cv || ''),
+)
+const aiWritingSectionLabel = computed(
+  () => cvAiWritingSections.find((item) => item.value === aiWritingSection.value)?.label || 'AI Writing',
 )
 const candidateAvatarUrl = computed(() =>
   currentCandidate.value?.avatar_url ||
@@ -409,6 +434,114 @@ const removeSectionItem = (field, index) => {
   if (!form[field].length && ['ky_nang_json', 'kinh_nghiem_json', 'hoc_van_json'].includes(field)) {
     addSectionItem(field)
   }
+}
+
+const buildAiWritingProfile = () => ({
+  tieu_de_ho_so: form.tieu_de_ho_so,
+  muc_tieu_nghe_nghiep: form.muc_tieu_nghe_nghiep,
+  trinh_do: form.trinh_do,
+  kinh_nghiem_nam: form.kinh_nghiem_nam,
+  mo_ta_ban_than: form.mo_ta_ban_than,
+  vi_tri_ung_tuyen_muc_tieu: targetPosition.value || form.vi_tri_ung_tuyen_muc_tieu,
+  ten_nganh_nghe_muc_tieu: selectedIndustryName.value || form.ten_nganh_nghe_muc_tieu,
+  ky_nang_json: normalizeItems(form.ky_nang_json, ['ten']),
+  kinh_nghiem_json: normalizeItems(form.kinh_nghiem_json, ['vi_tri']),
+  hoc_van_json: normalizeItems(form.hoc_van_json, ['truong']),
+  du_an_json: normalizeItems(form.du_an_json, ['ten']),
+  chung_chi_json: normalizeItems(form.chung_chi_json, ['ten']),
+})
+
+const aiWritingKey = (section, index = null) => `${section}:${index ?? 'general'}`
+
+const requestAiWriting = async (section = aiWritingSection.value, options = {}) => {
+  const targetIndex = options.index ?? null
+  const loadingKey = aiWritingKey(section, targetIndex)
+  const item = options.item || (
+    section === 'experience'
+      ? form.kinh_nghiem_json[targetIndex ?? 0] || {}
+      : section === 'project'
+        ? form.du_an_json[targetIndex ?? 0] || {}
+        : {}
+  )
+
+  aiWritingLoadingKey.value = loadingKey
+  try {
+    const response = await cvBuilderAiService.generateWriting({
+      section,
+      profile: buildAiWritingProfile(),
+      item,
+      item_index: targetIndex,
+      tone: aiWritingTone.value,
+      language: 'vi',
+    })
+    const data = response?.data || {}
+    aiWritingSection.value = section
+    aiWritingTargetIndex.value = targetIndex
+    aiWritingSuggestions.value = Array.isArray(data.suggestions) ? data.suggestions : []
+    aiWritingSkillSuggestions.value = Array.isArray(data.skill_suggestions) ? data.skill_suggestions : []
+    aiWritingPanelOpen.value = true
+
+    if (data.used_fallback) {
+      notify.info(response?.message || 'Đã dùng bộ gợi ý nội bộ vì AI service chưa sẵn sàng.')
+    } else {
+      notify.success('Đã sinh gợi ý nội dung CV.')
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không thể sinh gợi ý AI Writing cho CV.')
+  } finally {
+    aiWritingLoadingKey.value = ''
+  }
+}
+
+const ensureAiTargetItem = (section) => {
+  if (section === 'experience') {
+    if (!form.kinh_nghiem_json.length) form.kinh_nghiem_json.push(createExperienceItem())
+    return form.kinh_nghiem_json[aiWritingTargetIndex.value ?? 0]
+  }
+
+  if (section === 'project') {
+    if (!form.du_an_json.length) form.du_an_json.push(createProjectItem())
+    return form.du_an_json[aiWritingTargetIndex.value ?? 0]
+  }
+
+  return null
+}
+
+const applyAiWritingSuggestion = (suggestion) => {
+  const text = String(suggestion || '').trim()
+  if (!text) return
+
+  if (aiWritingSection.value === 'summary') {
+    form.mo_ta_ban_than = text
+  } else if (aiWritingSection.value === 'career_goal') {
+    form.muc_tieu_nghe_nghiep = text
+  } else if (aiWritingSection.value === 'experience') {
+    const item = ensureAiTargetItem('experience')
+    if (item) item.mo_ta = text
+  } else if (aiWritingSection.value === 'project') {
+    const item = ensureAiTargetItem('project')
+    if (item) item.mo_ta = text
+  }
+
+  notify.success('Đã áp dụng gợi ý vào CV.')
+}
+
+const applyAiSkillSuggestions = (skills = aiWritingSkillSuggestions.value) => {
+  if (!Array.isArray(skills) || !skills.length) return
+
+  const currentSkills = normalizeItems(form.ky_nang_json, ['ten'])
+  const existingNames = new Set(currentSkills.map((item) => item.ten.toLowerCase()))
+  const mergedSkills = [...currentSkills]
+
+  skills.forEach((skill) => {
+    const name = String(skill?.ten || '').trim()
+    if (!name || existingNames.has(name.toLowerCase())) return
+    existingNames.add(name.toLowerCase())
+    mergedSkills.push(createSkillItem(name, skill?.muc_do || 'kha'))
+  })
+
+  form.ky_nang_json = mergedSkills.length ? mergedSkills : [createSkillItem()]
+  notify.success('Đã thêm các kỹ năng được gợi ý.')
 }
 
 const applyTemplatePreset = () => {
@@ -751,6 +884,104 @@ onBeforeUnmount(() => {
           </div>
         </section>
 
+        <section class="rounded-[28px] border border-emerald-100 bg-white p-6 shadow-sm dark:border-emerald-900/30 dark:bg-slate-900">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-600">AI Writing</p>
+              <h2 class="mt-2 text-xl font-black text-slate-900 dark:text-white">Trợ lý viết CV</h2>
+              <p class="mt-2 max-w-2xl text-sm leading-7 text-slate-500 dark:text-slate-400">
+                Sinh nhanh summary, mục tiêu, mô tả kinh nghiệm/dự án và kỹ năng phù hợp với vị trí mục tiêu.
+              </p>
+            </div>
+
+            <div class="grid w-full grid-cols-1 gap-3 sm:grid-cols-[180px_180px_auto] xl:w-auto">
+              <select
+                v-model="aiWritingSection"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              >
+                <option v-for="option in cvAiWritingSections" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+              <select
+                v-model="aiWritingTone"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+              >
+                <option v-for="option in cvAiWritingTones" :key="option.value" :value="option.value">
+                  {{ option.label }}
+                </option>
+              </select>
+              <button
+                class="inline-flex items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-emerald-300"
+                :disabled="Boolean(aiWritingLoadingKey)"
+                type="button"
+                @click="requestAiWriting(aiWritingSection)"
+              >
+                <span class="material-symbols-outlined text-[18px]">auto_awesome</span>
+                {{ aiWritingLoadingKey === aiWritingKey(aiWritingSection) ? 'Đang viết...' : 'Sinh gợi ý' }}
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="aiWritingPanelOpen"
+            class="mt-5 rounded-3xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950"
+          >
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <h3 class="text-sm font-bold text-slate-900 dark:text-white">{{ aiWritingSectionLabel }}</h3>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Chọn một gợi ý để đưa vào CV builder.
+                </p>
+              </div>
+              <button
+                class="rounded-full p-1.5 text-slate-400 transition hover:bg-white hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-slate-200"
+                type="button"
+                @click="aiWritingPanelOpen = false"
+              >
+                <span class="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <div v-if="aiWritingSection === 'skills'" class="mt-4 flex flex-wrap gap-2">
+              <button
+                v-for="skill in aiWritingSkillSuggestions"
+                :key="`ai-skill-${skill.ten}`"
+                class="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-900/50 dark:bg-slate-900 dark:text-emerald-300"
+                type="button"
+                @click="applyAiSkillSuggestions([skill])"
+              >
+                <span class="material-symbols-outlined text-[16px]">add</span>
+                {{ skill.ten }}
+              </button>
+              <button
+                v-if="aiWritingSkillSuggestions.length"
+                class="inline-flex items-center gap-2 rounded-full bg-slate-900 px-4 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
+                type="button"
+                @click="applyAiSkillSuggestions()"
+              >
+                Thêm tất cả
+              </button>
+              <p v-else class="text-sm text-slate-500 dark:text-slate-400">Chưa có kỹ năng mới để thêm.</p>
+            </div>
+
+            <div v-else class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">
+              <button
+                v-for="(suggestion, index) in aiWritingSuggestions"
+                :key="`ai-writing-${index}`"
+                class="rounded-2xl border border-slate-200 bg-white p-4 text-left text-sm leading-7 text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-emerald-800 dark:hover:bg-emerald-950/20"
+                type="button"
+                @click="applyAiWritingSuggestion(suggestion)"
+              >
+                <span class="mb-2 inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  Dùng gợi ý {{ index + 1 }}
+                </span>
+                <span class="block whitespace-pre-line">{{ suggestion }}</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section v-if="loading" class="rounded-[28px] border border-slate-200 bg-white p-10 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div class="h-40 animate-pulse rounded-3xl bg-slate-100 dark:bg-slate-800" />
         </section>
@@ -933,7 +1164,18 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="md:col-span-2">
-                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Mục tiêu nghề nghiệp</label>
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200">Mục tiêu nghề nghiệp</label>
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                    :disabled="Boolean(aiWritingLoadingKey)"
+                    type="button"
+                    @click="requestAiWriting('career_goal')"
+                  >
+                    <span class="material-symbols-outlined text-[16px]">auto_awesome</span>
+                    {{ aiWritingLoadingKey === aiWritingKey('career_goal') ? 'Đang viết...' : 'AI viết' }}
+                  </button>
+                </div>
                 <textarea
                   v-model="form.muc_tieu_nghe_nghiep"
                   rows="4"
@@ -943,7 +1185,18 @@ onBeforeUnmount(() => {
               </div>
 
               <div class="md:col-span-2">
-                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Mô tả bản thân</label>
+                <div class="mb-2 flex items-center justify-between gap-3">
+                  <label class="block text-sm font-semibold text-slate-700 dark:text-slate-200">Mô tả bản thân</label>
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-1.5 text-xs font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                    :disabled="Boolean(aiWritingLoadingKey)"
+                    type="button"
+                    @click="requestAiWriting('summary')"
+                  >
+                    <span class="material-symbols-outlined text-[16px]">auto_awesome</span>
+                    {{ aiWritingLoadingKey === aiWritingKey('summary') ? 'Đang viết...' : 'AI viết' }}
+                  </button>
+                </div>
                 <textarea
                   v-model="form.mo_ta_ban_than"
                   rows="4"
@@ -960,9 +1213,20 @@ onBeforeUnmount(() => {
                 <h2 class="text-lg font-bold text-slate-900 dark:text-white">Kỹ năng</h2>
                 <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Liệt kê những kỹ năng nổi bật bạn muốn employer nhìn thấy ngay.</p>
               </div>
-              <button class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" type="button" @click="addSectionItem('ky_nang_json')">
-                Thêm kỹ năng
-              </button>
+              <div class="flex flex-wrap justify-end gap-2">
+                <button
+                  class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                  :disabled="Boolean(aiWritingLoadingKey)"
+                  type="button"
+                  @click="requestAiWriting('skills')"
+                >
+                  <span class="material-symbols-outlined text-[17px]">auto_awesome</span>
+                  {{ aiWritingLoadingKey === aiWritingKey('skills') ? 'Đang gợi ý...' : 'AI gợi ý' }}
+                </button>
+                <button class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white" type="button" @click="addSectionItem('ky_nang_json')">
+                  Thêm kỹ năng
+                </button>
+              </div>
             </div>
 
             <div class="space-y-3">
@@ -998,7 +1262,16 @@ onBeforeUnmount(() => {
                   <MonthYearPicker v-model="item.ket_thuc" placeholder="Kết thúc" allow-present present-label="Hiện tại" />
                   <textarea v-model="item.mo_ta" rows="3" class="md:col-span-2 rounded-2xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100" placeholder="Mô tả ngắn các đầu việc, thành tựu hoặc tác động nổi bật." />
                 </div>
-                <div class="mt-3 flex justify-end">
+                <div class="mt-3 flex flex-wrap justify-end gap-2">
+                  <button
+                    class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                    :disabled="Boolean(aiWritingLoadingKey)"
+                    type="button"
+                    @click="requestAiWriting('experience', { item, index })"
+                  >
+                    <span class="material-symbols-outlined text-[17px]">auto_awesome</span>
+                    {{ aiWritingLoadingKey === aiWritingKey('experience', index) ? 'Đang viết...' : 'AI viết mô tả' }}
+                  </button>
                   <button class="rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50 dark:border-rose-900/40 dark:hover:bg-rose-900/10" type="button" @click="removeSectionItem('kinh_nghiem_json', index)">
                     Xóa kinh nghiệm
                   </button>
@@ -1121,7 +1394,16 @@ onBeforeUnmount(() => {
                       />
                     </label>
                   </div>
-                  <div class="mt-3 flex justify-end">
+                  <div class="mt-3 flex flex-wrap justify-end gap-2">
+                    <button
+                      class="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 px-3 py-2 text-sm font-bold text-emerald-700 transition hover:bg-emerald-50 disabled:opacity-60 dark:border-emerald-900/50 dark:text-emerald-300 dark:hover:bg-emerald-950/20"
+                      :disabled="Boolean(aiWritingLoadingKey)"
+                      type="button"
+                      @click="requestAiWriting('project', { item, index })"
+                    >
+                      <span class="material-symbols-outlined text-[17px]">auto_awesome</span>
+                      {{ aiWritingLoadingKey === aiWritingKey('project', index) ? 'Đang viết...' : 'AI viết mô tả' }}
+                    </button>
                     <button class="rounded-xl border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-500 transition hover:bg-rose-50 dark:border-rose-900/40 dark:hover:bg-rose-900/10" type="button" @click="removeSectionItem('du_an_json', index)">
                       Xóa mục
                     </button>

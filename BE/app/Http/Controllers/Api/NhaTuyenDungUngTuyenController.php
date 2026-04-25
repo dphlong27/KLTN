@@ -6,15 +6,20 @@ use App\Events\ApplicationChanged;
 use App\Http\Controllers\Api\Concerns\ResolvesEmployerCompany;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\UngTuyen\CapNhatTrangThaiRequest;
+use App\Http\Requests\UngTuyen\GuiOfferRequest;
 use App\Models\CongTy;
+use App\Models\InterviewRound;
 use App\Models\UngTuyen;
 use App\Notifications\ApplicationStatusNotification;
 use App\Notifications\InterviewScheduledNotification;
+use App\Notifications\OfferLetterNotification;
 use App\Services\Ai\AiClientService;
 use App\Services\AppNotificationService;
 use App\Services\AuditLogService;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use RuntimeException;
 
 class NhaTuyenDungUngTuyenController extends Controller
@@ -43,8 +48,43 @@ class NhaTuyenDungUngTuyenController extends Controller
             'ket_qua_phong_van',
             'trang_thai_tham_gia_phong_van',
             'rubric_danh_gia_phong_van',
+            'thoi_gian_gui_offer',
+            'trang_thai_offer',
+            'thoi_gian_phan_hoi_offer',
+            'han_phan_hoi_offer',
+            'ghi_chu_offer',
+            'ghi_chu_phan_hoi_offer',
+            'link_offer',
             'da_rut_don',
         ]);
+    }
+
+    private function interviewRoundAuditSnapshot(InterviewRound $round): array
+    {
+        return $round->only([
+            'id',
+            'ung_tuyen_id',
+            'thu_tu',
+            'ten_vong',
+            'loai_vong',
+            'trang_thai',
+            'ngay_hen_phong_van',
+            'hinh_thuc_phong_van',
+            'nguoi_phong_van',
+            'interviewer_user_id',
+            'link_phong_van',
+            'trang_thai_tham_gia',
+            'thoi_gian_phan_hoi',
+            'ket_qua',
+            'diem_so',
+            'ghi_chu',
+            'rubric_danh_gia_json',
+        ]);
+    }
+
+    private function nowUtc(): Carbon
+    {
+        return Carbon::now('Asia/Ho_Chi_Minh')->utc();
     }
 
     private function broadcastApplicationChanged(UngTuyen $application, string $changeType, array $payload = []): void
@@ -122,6 +162,46 @@ class NhaTuyenDungUngTuyenController extends Controller
         })->afterResponse();
     }
 
+    private function dispatchInterviewRoundNotification(InterviewRound $round, bool $wasRescheduled = false): void
+    {
+        $round->loadMissing([
+            'ungTuyen.tinTuyenDung.congTy',
+            'ungTuyen.hoSo.nguoiDung',
+        ]);
+
+        $ungTuyen = $round->ungTuyen;
+        $ungVien = $ungTuyen?->hoSo?->nguoiDung;
+
+        if (!$ungTuyen || !$ungVien || !$ungVien->email) {
+            return;
+        }
+
+        dispatch(function () use ($ungVien, $ungTuyen, $round, $wasRescheduled): void {
+            $ungTuyenFresh = $ungTuyen->fresh(['tinTuyenDung.congTy', 'hoSo.nguoiDung']);
+            $roundFresh = $round->fresh();
+            $ungVien->notify(new InterviewScheduledNotification($ungTuyenFresh, $wasRescheduled, false, $roundFresh));
+        })->afterResponse();
+    }
+
+    private function dispatchOfferNotification(UngTuyen $ungTuyen): void
+    {
+        $ungTuyen->loadMissing([
+            'tinTuyenDung.congTy',
+            'hoSo.nguoiDung',
+        ]);
+
+        $ungVien = $ungTuyen->hoSo?->nguoiDung;
+
+        if (!$ungVien || !$ungVien->email) {
+            return;
+        }
+
+        dispatch(function () use ($ungVien, $ungTuyen): void {
+            $ungTuyenFresh = $ungTuyen->fresh(['tinTuyenDung.congTy', 'hoSo.nguoiDung']);
+            $ungVien->notify(new OfferLetterNotification($ungTuyenFresh));
+        })->afterResponse();
+    }
+
     private function shouldSendStatusNotification(UngTuyen $ungTuyen, int $trangThaiMoi): bool
     {
         return (int) $ungTuyen->trang_thai !== $trangThaiMoi
@@ -157,9 +237,12 @@ class NhaTuyenDungUngTuyenController extends Controller
                 // Bao gồm hồ sơ đã xoá mềm 
                 $q->withTrashed()
                   ->select('id', 'nguoi_dung_id', 'tieu_de_ho_so', 'muc_tieu_nghe_nghiep', 'file_cv')
-                  ->with('nguoiDung:id,email'); // Chỉ lấy email
+                  ->with('nguoiDung:id,ho_ten,email');
             },
             'hrPhuTrach:id,ho_ten,email',
+            'interviewRounds.interviewer:id,ho_ten,email',
+            'onboardingPlan.tasks.completedBy:id,ho_ten,email',
+            'onboardingPlan.hrPhuTrach:id,ho_ten,email',
         ]);
 
         // Lọc theo tin tuyển dụng cụ thể (VD chọn xem danh sách của chỉ 1 tin)
@@ -201,6 +284,7 @@ class NhaTuyenDungUngTuyenController extends Controller
 
         $ungTuyen = $this->findCompanyApplication($id, $congTy);
         $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+        $round = $this->resolveInterviewRoundFromRequest($request, $ungTuyen);
 
         if ($this->isFinalStatus($ungTuyen)) {
             return response()->json([
@@ -209,7 +293,7 @@ class NhaTuyenDungUngTuyenController extends Controller
             ], 422);
         }
 
-        $context = $this->buildInterviewCopilotContext($ungTuyen);
+        $context = $this->buildInterviewCopilotContext($ungTuyen, $round);
         $usedFallback = false;
 
         try {
@@ -217,18 +301,30 @@ class NhaTuyenDungUngTuyenController extends Controller
             $copilot = $this->normalizeInterviewCopilotPayload($response['data'] ?? $response, $context);
         } catch (RuntimeException $exception) {
             $usedFallback = true;
+            $this->aiClientService->recordFallback(
+                'interview_copilot_generate',
+                $exception->getMessage(),
+                ['ung_tuyen_id' => (int) $ungTuyen->id, 'application_context' => $context],
+                ['interview_round_id' => $round?->id]
+            );
             $copilot = $this->fallbackInterviewCopilotPayload($context, $exception->getMessage());
         }
 
-        $snapshot = $this->currentCopilotSnapshot($ungTuyen);
+        $snapshot = $this->currentCopilotSnapshot($ungTuyen, $round);
         $snapshot['pre_interview'] = $copilot;
         $snapshot['generated_at'] = now()->toISOString();
         $snapshot['generated_by'] = $user?->only(['id', 'ho_ten', 'email']);
         $snapshot['used_fallback'] = $usedFallback;
 
-        $before = $this->applicationAuditSnapshot($ungTuyen);
-        $ungTuyen->forceFill(['rubric_danh_gia_phong_van' => json_encode($snapshot, JSON_UNESCAPED_UNICODE)])->save();
+        $before = $round ? $this->interviewRoundAuditSnapshot($round) : $this->applicationAuditSnapshot($ungTuyen);
+        if ($round) {
+            $round->forceFill(['rubric_danh_gia_json' => json_encode($snapshot, JSON_UNESCAPED_UNICODE)])->save();
+            $this->syncApplicationFromInterviewRound($ungTuyen, $round->fresh());
+        } else {
+            $ungTuyen->forceFill(['rubric_danh_gia_phong_van' => json_encode($snapshot, JSON_UNESCAPED_UNICODE)])->save();
+        }
         $ungTuyenAfter = $ungTuyen->fresh();
+        $roundAfter = $round?->fresh();
 
         $this->auditLogService->logModelAction(
             actor: $user,
@@ -237,10 +333,11 @@ class NhaTuyenDungUngTuyenController extends Controller
             target: $ungTuyenAfter,
             company: $congTy,
             before: $before,
-            after: $this->applicationAuditSnapshot($ungTuyenAfter),
+            after: $roundAfter ? $this->interviewRoundAuditSnapshot($roundAfter) : $this->applicationAuditSnapshot($ungTuyenAfter),
             metadata: [
                 'scope' => 'interview_copilot',
                 'tin_tuyen_dung_id' => $ungTuyenAfter->tin_tuyen_dung_id,
+                'interview_round_id' => $roundAfter?->id,
                 'used_fallback' => $usedFallback,
             ],
         );
@@ -250,7 +347,7 @@ class NhaTuyenDungUngTuyenController extends Controller
             'message' => $usedFallback
                 ? 'AI service chưa phản hồi, hệ thống đã tạo bộ Copilot dự phòng.'
                 : 'Đã tạo Interview Copilot.',
-            'data' => $this->mapInterviewCopilotResponse($ungTuyenAfter, $snapshot),
+            'data' => $this->mapInterviewCopilotResponse($ungTuyenAfter, $snapshot, $roundAfter),
         ]);
     }
 
@@ -272,6 +369,7 @@ class NhaTuyenDungUngTuyenController extends Controller
 
         $ungTuyen = $this->findCompanyApplication($id, $congTy);
         $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+        $round = $this->resolveInterviewRoundFromRequest($request, $ungTuyen);
 
         if ($this->isFinalStatus($ungTuyen)) {
             return response()->json([
@@ -280,7 +378,7 @@ class NhaTuyenDungUngTuyenController extends Controller
             ], 422);
         }
 
-        $context = $this->buildInterviewCopilotContext($ungTuyen);
+        $context = $this->buildInterviewCopilotContext($ungTuyen, $round);
         $notes = [
             'notes' => $data['notes'] ?? '',
             'scores' => $data['scores'] ?? [],
@@ -293,22 +391,40 @@ class NhaTuyenDungUngTuyenController extends Controller
             $evaluation = $this->normalizeInterviewEvaluationPayload($response['data'] ?? $response, $notes);
         } catch (RuntimeException $exception) {
             $usedFallback = true;
+            $this->aiClientService->recordFallback(
+                'interview_copilot_evaluate',
+                $exception->getMessage(),
+                ['ung_tuyen_id' => (int) $ungTuyen->id, 'application_context' => $context, 'interview_notes' => $notes],
+                ['interview_round_id' => $round?->id]
+            );
             $evaluation = $this->fallbackInterviewEvaluationPayload($notes, $exception->getMessage());
         }
 
-        $snapshot = $this->currentCopilotSnapshot($ungTuyen);
+        $snapshot = $this->currentCopilotSnapshot($ungTuyen, $round);
         $snapshot['post_interview'] = $evaluation;
         $snapshot['evaluated_at'] = now()->toISOString();
         $snapshot['evaluated_by'] = $user?->only(['id', 'ho_ten', 'email']);
         $snapshot['used_evaluation_fallback'] = $usedFallback;
 
-        $before = $this->applicationAuditSnapshot($ungTuyen);
-        $ungTuyen->forceFill([
-            'rubric_danh_gia_phong_van' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
-            'ket_qua_phong_van' => $evaluation['summary'] ?? $ungTuyen->ket_qua_phong_van,
-            'ghi_chu' => $notes['notes'] ?: $ungTuyen->ghi_chu,
-        ])->save();
+        $before = $round ? $this->interviewRoundAuditSnapshot($round) : $this->applicationAuditSnapshot($ungTuyen);
+        if ($round) {
+            $round->forceFill([
+                'rubric_danh_gia_json' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+                'ket_qua' => $evaluation['summary'] ?? $round->ket_qua,
+                'ghi_chu' => $notes['notes'] ?: $round->ghi_chu,
+                'trang_thai' => InterviewRound::TRANG_THAI_HOAN_THANH,
+                'updated_by' => $user?->id,
+            ])->save();
+            $this->syncApplicationFromInterviewRound($ungTuyen, $round->fresh());
+        } else {
+            $ungTuyen->forceFill([
+                'rubric_danh_gia_phong_van' => json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+                'ket_qua_phong_van' => $evaluation['summary'] ?? $ungTuyen->ket_qua_phong_van,
+                'ghi_chu' => $notes['notes'] ?: $ungTuyen->ghi_chu,
+            ])->save();
+        }
         $ungTuyenAfter = $ungTuyen->fresh();
+        $roundAfter = $round?->fresh();
 
         $this->auditLogService->logModelAction(
             actor: $user,
@@ -317,10 +433,11 @@ class NhaTuyenDungUngTuyenController extends Controller
             target: $ungTuyenAfter,
             company: $congTy,
             before: $before,
-            after: $this->applicationAuditSnapshot($ungTuyenAfter),
+            after: $roundAfter ? $this->interviewRoundAuditSnapshot($roundAfter) : $this->applicationAuditSnapshot($ungTuyenAfter),
             metadata: [
                 'scope' => 'interview_copilot',
                 'tin_tuyen_dung_id' => $ungTuyenAfter->tin_tuyen_dung_id,
+                'interview_round_id' => $roundAfter?->id,
                 'used_fallback' => $usedFallback,
             ],
         );
@@ -330,7 +447,7 @@ class NhaTuyenDungUngTuyenController extends Controller
             'message' => $usedFallback
                 ? 'AI service chưa phản hồi, hệ thống đã tạo đánh giá dự phòng.'
                 : 'Đã tạo đánh giá sau phỏng vấn.',
-            'data' => $this->mapInterviewCopilotResponse($ungTuyenAfter, $snapshot),
+            'data' => $this->mapInterviewCopilotResponse($ungTuyenAfter, $snapshot, $roundAfter),
         ]);
     }
 
@@ -344,10 +461,43 @@ class NhaTuyenDungUngTuyenController extends Controller
             'tinTuyenDung.kyNangYeuCaus.kyNang:id,ten_ky_nang',
             'hoSo' => fn ($q) => $q->withTrashed()->with(['nguoiDung.kyNangs:id,ten_ky_nang', 'parsing']),
             'hrPhuTrach:id,ho_ten,email',
+            'interviewRounds.interviewer:id,ho_ten,email',
+            'onboardingPlan.tasks.completedBy:id,ho_ten,email',
+            'onboardingPlan.hrPhuTrach:id,ho_ten,email',
         ])->findOrFail($id);
     }
 
-    private function buildInterviewCopilotContext(UngTuyen $ungTuyen): array
+    private function resolveInterviewRoundFromRequest(Request $request, UngTuyen $ungTuyen): ?InterviewRound
+    {
+        $roundId = (int) $request->integer('interview_round_id');
+
+        if (!$roundId) {
+            return null;
+        }
+
+        return $ungTuyen->interviewRounds()
+            ->with('interviewer:id,ho_ten,email')
+            ->whereKey($roundId)
+            ->firstOrFail();
+    }
+
+    private function syncApplicationFromInterviewRound(UngTuyen $ungTuyen, InterviewRound $round): void
+    {
+        $ungTuyen->forceFill([
+            'trang_thai' => max((int) $ungTuyen->trang_thai, UngTuyen::TRANG_THAI_DA_HEN_PHONG_VAN),
+            'vong_phong_van_hien_tai' => $round->loai_vong,
+            'ngay_hen_phong_van' => $round->ngay_hen_phong_van,
+            'hinh_thuc_phong_van' => $round->hinh_thuc_phong_van,
+            'nguoi_phong_van' => $round->nguoi_phong_van,
+            'link_phong_van' => $round->link_phong_van,
+            'trang_thai_tham_gia_phong_van' => $round->trang_thai_tham_gia,
+            'thoi_gian_phan_hoi_phong_van' => $round->thoi_gian_phan_hoi,
+            'ket_qua_phong_van' => $round->ket_qua,
+            'rubric_danh_gia_phong_van' => $round->rubric_danh_gia_json,
+        ])->save();
+    }
+
+    private function buildInterviewCopilotContext(UngTuyen $ungTuyen, ?InterviewRound $round = null): array
     {
         $tin = $ungTuyen->tinTuyenDung;
         $hoSo = $ungTuyen->hoSo;
@@ -357,12 +507,15 @@ class NhaTuyenDungUngTuyenController extends Controller
             'application' => [
                 'id' => $ungTuyen->id,
                 'status' => $ungTuyen->trang_thai,
-                'interview_round' => $ungTuyen->vong_phong_van_hien_tai ?: 'hr',
-                'interview_time' => optional($ungTuyen->ngay_hen_phong_van)?->toISOString(),
-                'interview_mode' => $ungTuyen->hinh_thuc_phong_van,
-                'interviewer' => $ungTuyen->nguoi_phong_van,
-                'current_notes' => $ungTuyen->ghi_chu,
-                'current_result' => $ungTuyen->ket_qua_phong_van,
+                'interview_round_id' => $round?->id,
+                'interview_round' => $round?->loai_vong ?: ($ungTuyen->vong_phong_van_hien_tai ?: 'hr'),
+                'interview_round_name' => $round?->ten_vong,
+                'interview_round_order' => $round?->thu_tu,
+                'interview_time' => optional($round?->ngay_hen_phong_van ?? $ungTuyen->ngay_hen_phong_van)?->toISOString(),
+                'interview_mode' => $round?->hinh_thuc_phong_van ?? $ungTuyen->hinh_thuc_phong_van,
+                'interviewer' => $round?->nguoi_phong_van ?? $ungTuyen->nguoi_phong_van,
+                'current_notes' => $round?->ghi_chu ?? $ungTuyen->ghi_chu,
+                'current_result' => $round?->ket_qua ?? $ungTuyen->ket_qua_phong_van,
             ],
             'job' => [
                 'id' => $tin?->id,
@@ -500,21 +653,23 @@ class NhaTuyenDungUngTuyenController extends Controller
         ];
     }
 
-    private function currentCopilotSnapshot(UngTuyen $ungTuyen): array
+    private function currentCopilotSnapshot(UngTuyen $ungTuyen, ?InterviewRound $round = null): array
     {
-        $decoded = json_decode((string) $ungTuyen->rubric_danh_gia_phong_van, true);
+        $decoded = json_decode((string) ($round?->rubric_danh_gia_json ?? $ungTuyen->rubric_danh_gia_phong_van), true);
 
         return is_array($decoded) ? $decoded : [];
     }
 
-    private function mapInterviewCopilotResponse(UngTuyen $ungTuyen, array $snapshot): array
+    private function mapInterviewCopilotResponse(UngTuyen $ungTuyen, array $snapshot, ?InterviewRound $round = null): array
     {
         return [
             'ung_tuyen_id' => $ungTuyen->id,
+            'interview_round_id' => $round?->id,
+            'interview_round' => $round,
             'copilot' => $snapshot,
-            'rubric_danh_gia_phong_van' => $ungTuyen->rubric_danh_gia_phong_van,
-            'ket_qua_phong_van' => $ungTuyen->ket_qua_phong_van,
-            'ghi_chu' => $ungTuyen->ghi_chu,
+            'rubric_danh_gia_phong_van' => $round?->rubric_danh_gia_json ?? $ungTuyen->rubric_danh_gia_phong_van,
+            'ket_qua_phong_van' => $round?->ket_qua ?? $ungTuyen->ket_qua_phong_van,
+            'ghi_chu' => $round?->ghi_chu ?? $ungTuyen->ghi_chu,
         ];
     }
 
@@ -641,6 +796,284 @@ class NhaTuyenDungUngTuyenController extends Controller
             ->filter()
             ->values()
             ->all();
+    }
+
+    public function interviewRounds(Request $request, $id): JsonResponse
+    {
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$congTy) {
+            return response()->json(['success' => false, 'message' => 'Vui lòng thiết lập thông tin công ty trước.'], 403);
+        }
+
+        $ungTuyen = $this->findCompanyApplication($id, $congTy);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+
+        return response()->json([
+            'success' => true,
+            'data' => $ungTuyen->interviewRounds()->with('interviewer:id,ho_ten,email')->get(),
+        ]);
+    }
+
+    public function storeInterviewRound(Request $request, $id): JsonResponse
+    {
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$congTy) {
+            return response()->json(['success' => false, 'message' => 'Vui lòng thiết lập thông tin công ty trước.'], 403);
+        }
+
+        $ungTuyen = $this->findCompanyApplication($id, $congTy);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+
+        if ($ungTuyen->da_rut_don || $this->isFinalStatus($ungTuyen)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn ứng tuyển đã đóng nên không thể tạo thêm vòng phỏng vấn.',
+            ], 422);
+        }
+
+        $data = $this->validateInterviewRoundPayload($request);
+        $data['thu_tu'] = $data['thu_tu'] ?? ((int) $ungTuyen->interviewRounds()->max('thu_tu') + 1);
+        $data['created_by'] = $user?->id;
+        $data['updated_by'] = $user?->id;
+        $data['trang_thai_tham_gia'] = UngTuyen::PHONG_VAN_CHO_XAC_NHAN;
+
+        $round = $ungTuyen->interviewRounds()->create($data)->fresh('interviewer:id,ho_ten,email');
+        $this->syncApplicationFromInterviewRound($ungTuyen, $round);
+        $ungTuyenAfter = $ungTuyen->fresh(['tinTuyenDung.congTy', 'hoSo.nguoiDung']);
+        $candidate = $ungTuyenAfter->hoSo?->nguoiDung;
+        $jobTitle = $ungTuyenAfter->tinTuyenDung?->tieu_de ?: 'vị trí ứng tuyển';
+        $companyName = $ungTuyenAfter->tinTuyenDung?->congTy?->ten_cong_ty ?: 'nhà tuyển dụng';
+
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_interview_round_created',
+            description: "Tạo vòng phỏng vấn #{$round->id} cho đơn ứng tuyển #{$ungTuyen->id}.",
+            target: $round,
+            company: $congTy,
+            after: $this->interviewRoundAuditSnapshot($round),
+            metadata: [
+                'scope' => 'interview_round',
+                'tin_tuyen_dung_id' => $ungTuyenAfter->tin_tuyen_dung_id,
+                'ung_tuyen_id' => $ungTuyenAfter->id,
+            ],
+            request: $request,
+        );
+
+        if ($candidate) {
+            $this->appNotificationService->createForUser(
+                $candidate,
+                'candidate_interview_round_scheduled',
+                'Bạn có vòng phỏng vấn mới',
+                "{$companyName} đã lên lịch {$round->ten_vong} cho vị trí {$jobTitle}.",
+                '/applications',
+                ['ung_tuyen_id' => $ungTuyenAfter->id, 'interview_round_id' => $round->id],
+            );
+        }
+
+        if ($round->ngay_hen_phong_van) {
+            $this->dispatchInterviewRoundNotification($round);
+        }
+
+        $this->broadcastApplicationChanged($ungTuyenAfter, 'interview_round_created', [
+            'interview_round_id' => $round->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã tạo vòng phỏng vấn và gửi thông báo cho ứng viên.',
+            'data' => $round,
+        ], 201);
+    }
+
+    public function updateInterviewRound(Request $request, $id, int $roundId): JsonResponse
+    {
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$congTy) {
+            return response()->json(['success' => false, 'message' => 'Vui lòng thiết lập thông tin công ty trước.'], 403);
+        }
+
+        $ungTuyen = $this->findCompanyApplication($id, $congTy);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+        $round = $ungTuyen->interviewRounds()->whereKey($roundId)->firstOrFail();
+
+        if ($ungTuyen->da_rut_don || $this->isFinalStatus($ungTuyen)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn ứng tuyển đã đóng nên không thể cập nhật vòng phỏng vấn.',
+            ], 422);
+        }
+
+        $data = $this->validateInterviewRoundPayload($request, true);
+        $before = $this->interviewRoundAuditSnapshot($round);
+        $wasScheduled = (bool) $round->ngay_hen_phong_van;
+        $scheduleChanged = $this->isInterviewRoundScheduleChanged($round, $data);
+        $data['updated_by'] = $user?->id;
+
+        if ($scheduleChanged && array_key_exists('ngay_hen_phong_van', $data)) {
+            $data['trang_thai_tham_gia'] = $data['ngay_hen_phong_van'] ? UngTuyen::PHONG_VAN_CHO_XAC_NHAN : null;
+            $data['thoi_gian_phan_hoi'] = null;
+            $data['thoi_gian_gui_nhac_lich'] = null;
+        }
+
+        $round->update($data);
+        $roundAfter = $round->fresh('interviewer:id,ho_ten,email');
+        $this->syncApplicationFromInterviewRound($ungTuyen, $roundAfter);
+        $ungTuyenAfter = $ungTuyen->fresh(['tinTuyenDung.congTy', 'hoSo.nguoiDung']);
+        $candidate = $ungTuyenAfter->hoSo?->nguoiDung;
+        $jobTitle = $ungTuyenAfter->tinTuyenDung?->tieu_de ?: 'vị trí ứng tuyển';
+        $companyName = $ungTuyenAfter->tinTuyenDung?->congTy?->ten_cong_ty ?: 'nhà tuyển dụng';
+
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: $scheduleChanged ? 'employer_interview_round_rescheduled' : 'employer_interview_round_updated',
+            description: "Cập nhật vòng phỏng vấn #{$roundAfter->id} cho đơn ứng tuyển #{$ungTuyen->id}.",
+            target: $roundAfter,
+            company: $congTy,
+            before: $before,
+            after: $this->interviewRoundAuditSnapshot($roundAfter),
+            metadata: [
+                'scope' => 'interview_round',
+                'tin_tuyen_dung_id' => $ungTuyenAfter->tin_tuyen_dung_id,
+                'ung_tuyen_id' => $ungTuyenAfter->id,
+            ],
+            request: $request,
+        );
+
+        if ($candidate && $scheduleChanged && $roundAfter->ngay_hen_phong_van) {
+            $this->appNotificationService->createForUser(
+                $candidate,
+                $wasScheduled ? 'candidate_interview_round_rescheduled' : 'candidate_interview_round_scheduled',
+                $wasScheduled ? 'Lịch vòng phỏng vấn đã được cập nhật' : 'Bạn có vòng phỏng vấn mới',
+                "{$companyName} đã " . ($wasScheduled ? 'cập nhật lịch' : 'lên lịch') . " {$roundAfter->ten_vong} cho vị trí {$jobTitle}.",
+                '/applications',
+                ['ung_tuyen_id' => $ungTuyenAfter->id, 'interview_round_id' => $roundAfter->id],
+            );
+            $this->dispatchInterviewRoundNotification($roundAfter, $wasScheduled);
+        }
+
+        $this->broadcastApplicationChanged($ungTuyenAfter, $scheduleChanged ? 'interview_round_rescheduled' : 'interview_round_updated', [
+            'interview_round_id' => $roundAfter->id,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => $scheduleChanged ? 'Đã cập nhật vòng phỏng vấn và gửi thông báo khi cần.' : 'Đã cập nhật vòng phỏng vấn.',
+            'data' => $roundAfter,
+        ]);
+    }
+
+    public function destroyInterviewRound(Request $request, $id, int $roundId): JsonResponse
+    {
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$congTy) {
+            return response()->json(['success' => false, 'message' => 'Vui lòng thiết lập thông tin công ty trước.'], 403);
+        }
+
+        $ungTuyen = $this->findCompanyApplication($id, $congTy);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+        $round = $ungTuyen->interviewRounds()->whereKey($roundId)->firstOrFail();
+        $before = $this->interviewRoundAuditSnapshot($round);
+        $round->delete();
+
+        $latestRound = $ungTuyen->interviewRounds()->latest('thu_tu')->first();
+        if ($latestRound) {
+            $this->syncApplicationFromInterviewRound($ungTuyen, $latestRound);
+        } else {
+            $ungTuyen->forceFill([
+                'vong_phong_van_hien_tai' => null,
+                'ngay_hen_phong_van' => null,
+                'hinh_thuc_phong_van' => null,
+                'nguoi_phong_van' => null,
+                'link_phong_van' => null,
+                'trang_thai_tham_gia_phong_van' => null,
+                'thoi_gian_phan_hoi_phong_van' => null,
+                'ket_qua_phong_van' => null,
+                'rubric_danh_gia_phong_van' => null,
+            ])->save();
+        }
+
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_interview_round_deleted',
+            description: "Xóa vòng phỏng vấn #{$roundId} khỏi đơn ứng tuyển #{$ungTuyen->id}.",
+            target: $ungTuyen,
+            company: $congTy,
+            before: $before,
+            metadata: [
+                'scope' => 'interview_round',
+                'ung_tuyen_id' => $ungTuyen->id,
+            ],
+            request: $request,
+        );
+
+        $this->broadcastApplicationChanged($ungTuyen->fresh(), 'interview_round_deleted', [
+            'interview_round_id' => $roundId,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã xóa vòng phỏng vấn.',
+        ]);
+    }
+
+    private function validateInterviewRoundPayload(Request $request, bool $partial = false): array
+    {
+        $sometimes = $partial ? ['sometimes'] : ['required'];
+        $data = $request->validate([
+            'thu_tu' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'ten_vong' => [...$sometimes, 'string', 'max:255'],
+            'loai_vong' => ['nullable', 'string', Rule::in(InterviewRound::LOAI_VONG_LIST)],
+            'trang_thai' => ['nullable', 'integer', Rule::in(InterviewRound::TRANG_THAI_LIST)],
+            'ngay_hen_phong_van' => ['nullable', 'date'],
+            'hinh_thuc_phong_van' => ['nullable', 'string', Rule::in(['online', 'offline', 'phone'])],
+            'nguoi_phong_van' => ['nullable', 'string', 'max:255'],
+            'interviewer_user_id' => ['nullable', 'integer', 'exists:nguoi_dungs,id'],
+            'link_phong_van' => ['nullable', 'string', 'max:2048'],
+            'ket_qua' => ['nullable', 'string', 'max:5000'],
+            'diem_so' => ['nullable', 'numeric', 'min:0', 'max:10'],
+            'ghi_chu' => ['nullable', 'string', 'max:8000'],
+        ]);
+
+        if (array_key_exists('ngay_hen_phong_van', $data) && $data['ngay_hen_phong_van']) {
+            $data['ngay_hen_phong_van'] = Carbon::parse((string) $data['ngay_hen_phong_van'], 'Asia/Ho_Chi_Minh')->utc();
+        }
+
+        $data['loai_vong'] = $data['loai_vong'] ?? 'hr';
+        $data['trang_thai'] = $data['trang_thai'] ?? InterviewRound::TRANG_THAI_DA_LEN_LICH;
+
+        return $data;
+    }
+
+    private function isInterviewRoundScheduleChanged(InterviewRound $round, array $data): bool
+    {
+        foreach (['ngay_hen_phong_van', 'hinh_thuc_phong_van', 'nguoi_phong_van', 'link_phong_van', 'interviewer_user_id'] as $field) {
+            if (!array_key_exists($field, $data)) {
+                continue;
+            }
+
+            if ($field === 'ngay_hen_phong_van') {
+                $current = $round->ngay_hen_phong_van?->format('Y-m-d H:i:s');
+                $incoming = $data[$field] instanceof Carbon ? $data[$field]->format('Y-m-d H:i:s') : null;
+                if ($current !== $incoming) {
+                    return true;
+                }
+                continue;
+            }
+
+            if ((string) ($round->{$field} ?? '') !== (string) ($data[$field] ?? '')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function notificationTemplates(): JsonResponse
@@ -912,6 +1345,134 @@ class NhaTuyenDungUngTuyenController extends Controller
                 },
                 'hrPhuTrach:id,ho_ten,email',
             ])
+        ]);
+    }
+
+    public function guiOffer(GuiOfferRequest $request, $id): JsonResponse
+    {
+        $congTy = $this->getCurrentEmployerCompany();
+        $user = $this->getAuthenticatedEmployer();
+
+        if (!$congTy) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Vui lòng thiết lập thông tin công ty trước.',
+            ], 403);
+        }
+
+        $ungTuyen = UngTuyen::whereHas('tinTuyenDung', function ($q) use ($congTy) {
+            $q->where('cong_ty_id', $congTy->id);
+        })->with(['tinTuyenDung.congTy', 'hoSo.nguoiDung', 'hrPhuTrach:id,ho_ten,email'])->findOrFail($id);
+        $this->abortIfCannotManageApplicationRecord($user, $congTy, $ungTuyen);
+
+        if ($ungTuyen->da_rut_don) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ứng viên đã rút đơn nên không thể gửi offer.',
+            ], 422);
+        }
+
+        if ((int) $ungTuyen->trang_thai === UngTuyen::TRANG_THAI_TU_CHOI) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Đơn ứng tuyển đã bị từ chối nên không thể gửi offer.',
+            ], 422);
+        }
+
+        if ((int) $ungTuyen->trang_thai_offer === UngTuyen::OFFER_DA_CHAP_NHAN) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Ứng viên đã chấp nhận offer này.',
+            ], 422);
+        }
+
+        $tin = $ungTuyen->tinTuyenDung()
+            ->withCount([
+                'acceptedApplications as so_luong_da_nhan',
+            ])
+            ->first();
+
+        if (
+            $tin
+            && (int) $ungTuyen->trang_thai !== UngTuyen::TRANG_THAI_TRUNG_TUYEN
+            && $tin->so_luong_con_lai <= 0
+        ) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tin tuyển dụng đã đủ chỉ tiêu. Không thể gửi offer thêm ứng viên.',
+                'data' => [
+                    'so_luong_tuyen' => $tin->so_luong_tuyen,
+                    'so_luong_da_nhan' => $tin->so_luong_da_nhan,
+                    'so_luong_con_lai' => $tin->so_luong_con_lai,
+                ],
+            ], 422);
+        }
+
+        $deadline = $request->filled('han_phan_hoi_offer')
+            ? Carbon::parse((string) $request->input('han_phan_hoi_offer'), 'Asia/Ho_Chi_Minh')->utc()
+            : $this->nowUtc()->copy()->addDays(14);
+
+        if ($deadline->isPast()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hạn phản hồi offer phải là thời điểm trong tương lai.',
+            ], 422);
+        }
+
+        $before = $this->applicationAuditSnapshot($ungTuyen);
+        $ungTuyen->forceFill([
+            'trang_thai' => UngTuyen::TRANG_THAI_TRUNG_TUYEN,
+            'trang_thai_offer' => UngTuyen::OFFER_DA_GUI,
+            'thoi_gian_gui_offer' => $this->nowUtc(),
+            'thoi_gian_phan_hoi_offer' => null,
+            'han_phan_hoi_offer' => $deadline,
+            'ghi_chu_offer' => $request->input('ghi_chu_offer'),
+            'ghi_chu_phan_hoi_offer' => null,
+            'link_offer' => $request->input('link_offer'),
+        ])->save();
+
+        $ungTuyenAfter = $ungTuyen->fresh(['tinTuyenDung.congTy', 'hoSo.nguoiDung', 'hrPhuTrach:id,ho_ten,email']);
+        $candidate = $ungTuyenAfter->hoSo?->nguoiDung;
+        $jobTitle = $ungTuyenAfter->tinTuyenDung?->tieu_de ?: 'vị trí ứng tuyển';
+        $companyName = $ungTuyenAfter->tinTuyenDung?->congTy?->ten_cong_ty ?: 'nhà tuyển dụng';
+
+        $this->auditLogService->logModelAction(
+            actor: $user,
+            action: 'employer_offer_sent',
+            description: "Gửi offer cho đơn ứng tuyển #{$ungTuyenAfter->id}.",
+            target: $ungTuyenAfter,
+            company: $congTy,
+            before: $before,
+            after: $this->applicationAuditSnapshot($ungTuyenAfter),
+            metadata: [
+                'scope' => 'employer_offer',
+                'tin_tuyen_dung_id' => $ungTuyenAfter->tin_tuyen_dung_id,
+                'tin_tuyen_dung_tieu_de' => $jobTitle,
+                'han_phan_hoi_offer' => $ungTuyenAfter->han_phan_hoi_offer?->toISOString(),
+            ],
+            request: $request,
+        );
+
+        if ($candidate) {
+            $this->appNotificationService->createForUser(
+                $candidate,
+                'candidate_offer_sent',
+                'Bạn đã nhận được offer',
+                "{$companyName} đã gửi đề nghị nhận việc cho vị trí {$jobTitle}. Vui lòng phản hồi trước hạn.",
+                '/applications',
+                ['ung_tuyen_id' => $ungTuyenAfter->id, 'tin_tuyen_dung_id' => $ungTuyenAfter->tin_tuyen_dung_id],
+            );
+        }
+
+        $this->dispatchOfferNotification($ungTuyenAfter);
+        $this->broadcastApplicationChanged($ungTuyenAfter, 'offer_sent', [
+            'trang_thai_offer' => UngTuyen::OFFER_DA_GUI,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã gửi offer cho ứng viên qua email và notification.',
+            'data' => $ungTuyenAfter,
         ]);
     }
 

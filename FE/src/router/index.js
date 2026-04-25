@@ -28,7 +28,7 @@ const getHomeByRole = (role) => {
       return '/admin'
     case ROLE_CANDIDATE:
     default:
-      return '/'
+      return '/dashboard'
   }
 }
 
@@ -194,6 +194,12 @@ const routes = [
     meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
   },
   {
+    path: '/smart-job-alerts',
+    name: 'SmartJobAlerts',
+    component: () => import('@/components/Dashboard/SmartJobAlertsPage.vue'),
+    meta: { layout: 'dashboard', requiresAuth: true, role: ROLE_CANDIDATE }
+  },
+  {
     path: '/matched-jobs',
     name: 'MatchedJobs',
     component: () => import('@/components/Dashboard/MatchedJobsPage.vue'),
@@ -301,6 +307,12 @@ const routes = [
     path: '/admin/audit-logs',
     name: 'AdminAuditLogs',
     component: () => import('@/components/Admin/AdminAuditLogPage.vue'),
+    meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN }
+  },
+  {
+    path: '/admin/ai-usage',
+    name: 'AdminAiUsage',
+    component: () => import('@/components/Admin/AiUsageDashboardPage.vue'),
     meta: { layout: 'admin', requiresAuth: true, role: ROLE_ADMIN }
   },
   {

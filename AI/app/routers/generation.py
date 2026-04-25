@@ -1,9 +1,10 @@
 from fastapi import APIRouter
 
 from app.schemas.common import BaseAiResponse
-from app.schemas.generation import CareerReportRequest, CoverLetterRequest, CvTailoringRequest
+from app.schemas.generation import CareerReportRequest, CoverLetterRequest, CvBuilderWritingRequest, CvTailoringRequest
 from app.services.career_report import generate_career_report
 from app.services.cover_letter import generate_cover_letter
+from app.services.cv_builder_writing import generate_cv_builder_writing
 from app.services.cv_tailoring import generate_cv_tailoring
 
 
@@ -42,5 +43,16 @@ def generate_cv_tailoring_endpoint(payload: CvTailoringRequest) -> BaseAiRespons
             payload.tin_tuyen_dung_id,
             cv_profile=payload.cv_profile,
             jd_profile=payload.jd_profile,
+        )
+    )
+
+
+@router.post("/generate/cv-builder-writing", response_model=BaseAiResponse)
+def generate_cv_builder_writing_endpoint(payload: CvBuilderWritingRequest) -> BaseAiResponse:
+    return BaseAiResponse(
+        **generate_cv_builder_writing(
+            cv_profile=payload.cv_profile,
+            section=payload.section,
+            options=payload.options,
         )
     )

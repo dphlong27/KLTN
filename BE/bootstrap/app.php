@@ -42,7 +42,8 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Chưa xác thực. Vui lòng đăng nhập.',
+                    'code' => 'AUTH_UNAUTHENTICATED',
+                    'message' => 'Phiên đăng nhập đã hết hạn hoặc chưa hợp lệ. Vui lòng đăng nhập lại.',
                 ], 401);
             }
         });
@@ -51,6 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,
+                    'code' => 'RESOURCE_NOT_FOUND',
                     'message' => 'Không tìm thấy dữ liệu yêu cầu.',
                 ], 404);
             }
@@ -60,6 +62,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->expectsJson() || $request->is('api/*')) {
                 return response()->json([
                     'success' => false,
+                    'code' => 'VALIDATION_FAILED',
                     'message' => 'Dữ liệu không hợp lệ.',
                     'errors' => $e->errors(),
                 ], 422);

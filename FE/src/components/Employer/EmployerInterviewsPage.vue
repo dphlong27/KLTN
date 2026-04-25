@@ -9,6 +9,8 @@ import { formatDateTimeVN, formatHistoricalDateTimeVN, toDateTimeLocalInputVN } 
 import {
   APPLICATION_STATUS,
   APPLICATION_STATUS_OPTIONS,
+  OFFER_STATUS,
+  getOfferStatusMeta,
   getApplicationStatusMeta,
   isFinalApplicationStatus as isFinalApplicationStatusValue,
 } from '@/utils/applicationStatus'
@@ -28,6 +30,12 @@ const {
 const loading = ref(false)
 const saving = ref(false)
 const resendingEmailId = ref(null)
+const sendingOfferId = ref(null)
+const roundSaving = ref(false)
+const roundDeletingId = ref(null)
+const onboardingLoading = ref(false)
+const onboardingSaving = ref(false)
+const onboardingTaskSavingId = ref(null)
 const copilotGenerating = ref(false)
 const copilotEvaluating = ref(false)
 const applications = ref([])
@@ -35,6 +43,7 @@ const jobs = ref([])
 const pagination = ref(null)
 const modalOpen = ref(false)
 const selectedApplication = ref(null)
+const selectedRoundId = ref('')
 const candidateDetailOpen = ref(false)
 const candidateDetailLoading = ref(false)
 const candidateDetail = ref(null)
@@ -85,6 +94,45 @@ const form = reactive({
   ghi_chu: '',
 })
 
+const roundForm = reactive({
+  id: '',
+  thu_tu: '',
+  ten_vong: '',
+  loai_vong: 'hr',
+  trang_thai: 0,
+  ngay_hen_phong_van: '',
+  hinh_thuc_phong_van: '',
+  nguoi_phong_van: '',
+  interviewer_user_id: '',
+  link_phong_van: '',
+  ket_qua: '',
+  diem_so: '',
+  ghi_chu: '',
+})
+
+const offerForm = reactive({
+  ghi_chu_offer: '',
+  link_offer: '',
+  han_phan_hoi_offer: '',
+})
+
+const onboardingForm = reactive({
+  ngay_bat_dau: '',
+  dia_diem_lam_viec: '',
+  trang_thai: 'preparing',
+  loi_chao_mung: '',
+  ghi_chu_ung_vien: '',
+  ghi_chu_noi_bo: '',
+  tai_lieu_text: '',
+})
+
+const onboardingTaskForm = reactive({
+  tieu_de: '',
+  mo_ta: '',
+  han_hoan_tat: '',
+  nguoi_phu_trach: 'candidate',
+})
+
 const statusOptions = [
   { value: '', label: 'Tất cả trạng thái' },
   ...APPLICATION_STATUS_OPTIONS,
@@ -93,6 +141,16 @@ const statusOptions = [
 const activeTemplate = computed(() => notificationTemplates.value?.[Number(form.trang_thai)] || null)
 const copilotPreInterview = computed(() => copilotSnapshot.value?.pre_interview || null)
 const copilotPostInterview = computed(() => copilotSnapshot.value?.post_interview || null)
+const selectedInterviewRounds = computed(() =>
+  [...(selectedApplication.value?.interview_rounds || [])].sort((a, b) => Number(a.thu_tu || 0) - Number(b.thu_tu || 0))
+)
+const selectedRound = computed(() =>
+  selectedInterviewRounds.value.find((round) => Number(round.id) === Number(selectedRoundId.value)) || null
+)
+const selectedOnboardingPlan = computed(() => selectedApplication.value?.onboarding_plan || null)
+const canManageOnboarding = computed(() =>
+  Number(selectedApplication.value?.trang_thai_offer || OFFER_STATUS.NOT_SENT) === OFFER_STATUS.ACCEPTED
+)
 
 const stats = computed(() => {
   const all = applications.value
@@ -153,6 +211,7 @@ const upcomingInterviews = computed(() =>
 )
 
 const statusMeta = getApplicationStatusMeta
+const offerStatusMeta = getOfferStatusMeta
 
 const interviewModeLabel = (value) => {
   const labels = {
@@ -183,6 +242,26 @@ const interviewAttendanceMeta = (value) => {
   return labels[Number(value)] || {
     label: 'Chưa phản hồi',
     classes: 'border border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  }
+}
+
+const roundTypeLabel = (value) => ({
+  hr: 'HR screening',
+  technical: 'Technical',
+  manager: 'Manager',
+  final: 'Final',
+  culture: 'Culture fit',
+  other: 'Khác',
+}[value] || value || 'HR screening')
+
+const roundStatusMeta = (value) => {
+  switch (Number(value)) {
+    case 1:
+      return { label: 'Hoàn thành', classes: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' }
+    case 2:
+      return { label: 'Đã hủy', classes: 'bg-rose-500/10 text-rose-700 dark:text-rose-300' }
+    default:
+      return { label: 'Đã lên lịch', classes: 'bg-violet-500/10 text-violet-700 dark:text-violet-300' }
   }
 }
 
@@ -257,6 +336,13 @@ const canResendInterviewEmail = (application) =>
   && Boolean(application?.ngay_hen_phong_van)
   && !application?.da_rut_don
   && !isFinalApplicationStatus(application)
+
+const canSendOffer = (application) =>
+  Boolean(application?.id)
+  && canMutateApplication(application)
+  && !application?.da_rut_don
+  && Number(application?.trang_thai) !== APPLICATION_STATUS.REJECTED
+  && Number(application?.trang_thai_offer || OFFER_STATUS.NOT_SENT) !== OFFER_STATUS.ACCEPTED
 
 const statusOptionsForSelectedApplication = computed(() => {
   if (!selectedApplication.value) return statusOptions.slice(1)
@@ -346,9 +432,23 @@ const openModal = (application) => {
   form.ket_qua_phong_van = application.ket_qua_phong_van || ''
   form.hr_phu_trach_id = application.hr_phu_trach?.id ? String(application.hr_phu_trach.id) : ''
   form.ghi_chu = application.ghi_chu || ''
+  offerForm.ghi_chu_offer = application.ghi_chu_offer || ''
+  offerForm.link_offer = application.link_offer || ''
+  offerForm.han_phan_hoi_offer = formatDateTimeInput(application.han_phan_hoi_offer)
   copilotSnapshot.value = parseCopilotSnapshot(application.rubric_danh_gia_phong_van)
   resetCopilotScores(copilotPreInterview.value?.rubric || [])
+  const latestRound = [...(application.interview_rounds || [])].sort((a, b) => Number(b.thu_tu || 0) - Number(a.thu_tu || 0))[0]
+  if (latestRound) {
+    selectRound(latestRound)
+  } else {
+    resetRoundForm()
+    roundForm.thu_tu = 1
+    roundForm.ten_vong = 'Vòng 1 - HR screening'
+  }
   modalOpen.value = true
+  if (Number(application.trang_thai_offer || OFFER_STATUS.NOT_SENT) === OFFER_STATUS.ACCEPTED) {
+    fetchOnboardingPlan()
+  }
 }
 
 const openInterviewCopilotWorkspace = (application) => {
@@ -369,8 +469,87 @@ const closeModal = () => {
   form.ket_qua_phong_van = ''
   form.hr_phu_trach_id = ''
   form.ghi_chu = ''
+  offerForm.ghi_chu_offer = ''
+  offerForm.link_offer = ''
+  offerForm.han_phan_hoi_offer = ''
+  resetOnboardingForm()
   copilotSnapshot.value = null
   resetCopilotScores([])
+  resetRoundForm()
+}
+
+const resetOnboardingForm = () => {
+  onboardingForm.ngay_bat_dau = ''
+  onboardingForm.dia_diem_lam_viec = ''
+  onboardingForm.trang_thai = 'preparing'
+  onboardingForm.loi_chao_mung = ''
+  onboardingForm.ghi_chu_ung_vien = ''
+  onboardingForm.ghi_chu_noi_bo = ''
+  onboardingForm.tai_lieu_text = ''
+  onboardingTaskForm.tieu_de = ''
+  onboardingTaskForm.mo_ta = ''
+  onboardingTaskForm.han_hoan_tat = ''
+  onboardingTaskForm.nguoi_phu_trach = 'candidate'
+}
+
+const fillOnboardingForm = (plan) => {
+  onboardingForm.ngay_bat_dau = plan?.ngay_bat_dau || ''
+  onboardingForm.dia_diem_lam_viec = plan?.dia_diem_lam_viec || ''
+  onboardingForm.trang_thai = plan?.trang_thai || 'preparing'
+  onboardingForm.loi_chao_mung = plan?.loi_chao_mung || ''
+  onboardingForm.ghi_chu_ung_vien = plan?.ghi_chu_ung_vien || ''
+  onboardingForm.ghi_chu_noi_bo = plan?.ghi_chu_noi_bo || ''
+  onboardingForm.tai_lieu_text = (plan?.tai_lieu_can_chuan_bi || plan?.tai_lieu_can_chuan_bi_json || []).join('\n')
+}
+
+const setSelectedOnboardingPlan = (plan) => {
+  if (!selectedApplication.value) return
+  selectedApplication.value = {
+    ...selectedApplication.value,
+    onboarding_plan: plan,
+  }
+  applications.value = applications.value.map((item) =>
+    Number(item.id) === Number(selectedApplication.value.id)
+      ? { ...item, onboarding_plan: plan }
+      : item
+  )
+  fillOnboardingForm(plan)
+}
+
+const resetRoundForm = () => {
+  selectedRoundId.value = ''
+  roundForm.id = ''
+  roundForm.thu_tu = ''
+  roundForm.ten_vong = ''
+  roundForm.loai_vong = 'hr'
+  roundForm.trang_thai = 0
+  roundForm.ngay_hen_phong_van = ''
+  roundForm.hinh_thuc_phong_van = ''
+  roundForm.nguoi_phong_van = ''
+  roundForm.interviewer_user_id = ''
+  roundForm.link_phong_van = ''
+  roundForm.ket_qua = ''
+  roundForm.diem_so = ''
+  roundForm.ghi_chu = ''
+}
+
+const selectRound = (round) => {
+  selectedRoundId.value = String(round?.id || '')
+  roundForm.id = round?.id || ''
+  roundForm.thu_tu = round?.thu_tu || ''
+  roundForm.ten_vong = round?.ten_vong || ''
+  roundForm.loai_vong = round?.loai_vong || 'hr'
+  roundForm.trang_thai = Number(round?.trang_thai || 0)
+  roundForm.ngay_hen_phong_van = formatDateTimeInput(round?.ngay_hen_phong_van)
+  roundForm.hinh_thuc_phong_van = round?.hinh_thuc_phong_van || ''
+  roundForm.nguoi_phong_van = round?.nguoi_phong_van || ''
+  roundForm.interviewer_user_id = round?.interviewer_user_id ? String(round.interviewer_user_id) : ''
+  roundForm.link_phong_van = round?.link_phong_van || ''
+  roundForm.ket_qua = round?.ket_qua || ''
+  roundForm.diem_so = round?.diem_so ?? ''
+  roundForm.ghi_chu = round?.ghi_chu || ''
+  copilotSnapshot.value = parseCopilotSnapshot(round?.rubric_danh_gia_json)
+  resetCopilotScores(copilotPreInterview.value?.rubric || [])
 }
 
 const parseCopilotSnapshot = (value) => {
@@ -395,6 +574,17 @@ const resetCopilotScores = (rubric = []) => {
 
 const syncCopilotFromResponse = (payload) => {
   copilotSnapshot.value = payload?.copilot || null
+  if (payload?.interview_round?.id) {
+    selectedRoundId.value = String(payload.interview_round.id)
+    const updatedRound = payload.interview_round
+    selectedApplication.value = {
+      ...selectedApplication.value,
+      interview_rounds: (selectedApplication.value?.interview_rounds || []).map((round) =>
+        Number(round.id) === Number(updatedRound.id) ? updatedRound : round
+      ),
+    }
+    selectRound(updatedRound)
+  }
   if (payload?.ket_qua_phong_van !== undefined) form.ket_qua_phong_van = payload.ket_qua_phong_van || form.ket_qua_phong_van
   if (payload?.ghi_chu !== undefined) form.ghi_chu = payload.ghi_chu || form.ghi_chu
   resetCopilotScores(copilotPreInterview.value?.rubric || [])
@@ -502,6 +692,74 @@ const saveApplication = async () => {
   }
 }
 
+const refreshSelectedApplicationRounds = async () => {
+  if (!selectedApplication.value?.id) return
+  try {
+    const response = await employerApplicationService.getInterviewRounds(selectedApplication.value.id)
+    selectedApplication.value = {
+      ...selectedApplication.value,
+      interview_rounds: response?.data || [],
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không tải lại được timeline phỏng vấn.')
+  }
+}
+
+const saveInterviewRound = async () => {
+  if (!selectedApplication.value?.id || !roundForm.ten_vong || roundSaving.value) return
+
+  roundSaving.value = true
+  const payload = {
+    thu_tu: roundForm.thu_tu ? Number(roundForm.thu_tu) : null,
+    ten_vong: roundForm.ten_vong,
+    loai_vong: roundForm.loai_vong || 'hr',
+    trang_thai: Number(roundForm.trang_thai || 0),
+    ngay_hen_phong_van: roundForm.ngay_hen_phong_van || null,
+    hinh_thuc_phong_van: roundForm.hinh_thuc_phong_van || null,
+    nguoi_phong_van: roundForm.nguoi_phong_van || null,
+    interviewer_user_id: roundForm.interviewer_user_id ? Number(roundForm.interviewer_user_id) : null,
+    link_phong_van: roundForm.link_phong_van || null,
+    ket_qua: roundForm.ket_qua || null,
+    diem_so: roundForm.diem_so !== '' ? Number(roundForm.diem_so) : null,
+    ghi_chu: roundForm.ghi_chu || null,
+  }
+
+  try {
+    const response = roundForm.id
+      ? await employerApplicationService.updateInterviewRound(selectedApplication.value.id, roundForm.id, payload)
+      : await employerApplicationService.createInterviewRound(selectedApplication.value.id, payload)
+    const savedRound = response?.data
+    notify.success(response?.message || 'Đã lưu vòng phỏng vấn.')
+    await refreshSelectedApplicationRounds()
+    await fetchApplications()
+    if (savedRound?.id) {
+      const freshRound = (selectedApplication.value?.interview_rounds || []).find((round) => Number(round.id) === Number(savedRound.id)) || savedRound
+      selectRound(freshRound)
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không lưu được vòng phỏng vấn.')
+  } finally {
+    roundSaving.value = false
+  }
+}
+
+const deleteInterviewRound = async (round) => {
+  if (!selectedApplication.value?.id || !round?.id || roundDeletingId.value) return
+
+  roundDeletingId.value = round.id
+  try {
+    await employerApplicationService.deleteInterviewRound(selectedApplication.value.id, round.id)
+    notify.success('Đã xóa vòng phỏng vấn.')
+    await refreshSelectedApplicationRounds()
+    await fetchApplications()
+    resetRoundForm()
+  } catch (error) {
+    notify.apiError(error, 'Không xóa được vòng phỏng vấn.')
+  } finally {
+    roundDeletingId.value = null
+  }
+}
+
 const generateInterviewCopilot = async () => {
   if (!selectedApplication.value) return
   if (!canUseInterviewCopilotFor(selectedApplication.value)) {
@@ -513,7 +771,9 @@ const generateInterviewCopilot = async () => {
 
   copilotGenerating.value = true
   try {
-    const response = await employerApplicationService.generateInterviewCopilot(selectedApplication.value.id)
+    const response = await employerApplicationService.generateInterviewCopilot(selectedApplication.value.id, {
+      interview_round_id: selectedRoundId.value ? Number(selectedRoundId.value) : undefined,
+    })
     syncCopilotFromResponse(response?.data)
     notify.success(response?.message || 'Đã tạo Interview Copilot.')
     await fetchApplications()
@@ -539,6 +799,7 @@ const evaluateInterviewCopilot = async () => {
       notes: form.ghi_chu || '',
       decision: form.ket_qua_phong_van || '',
       scores: { ...copilotScores },
+      interview_round_id: selectedRoundId.value ? Number(selectedRoundId.value) : undefined,
     })
     syncCopilotFromResponse(response?.data)
     notify.success(response?.message || 'Đã tạo đánh giá sau phỏng vấn.')
@@ -571,6 +832,129 @@ const resendInterviewEmail = async (application) => {
     notify.apiError(error, 'Không gửi lại được email lịch phỏng vấn.')
   } finally {
     resendingEmailId.value = null
+  }
+}
+
+const sendOffer = async () => {
+  if (!selectedApplication.value || sendingOfferId.value) return
+
+  if (!canSendOffer(selectedApplication.value)) {
+    notify.warning('Đơn này hiện không thể gửi offer.')
+    return
+  }
+
+  sendingOfferId.value = selectedApplication.value.id
+  try {
+    const response = await employerApplicationService.sendOffer(selectedApplication.value.id, {
+      ghi_chu_offer: offerForm.ghi_chu_offer || null,
+      link_offer: offerForm.link_offer || null,
+      han_phan_hoi_offer: offerForm.han_phan_hoi_offer || null,
+    })
+    const updated = response?.data || null
+    if (updated?.id) {
+      selectedApplication.value = updated
+      applications.value = applications.value.map((item) =>
+        Number(item.id) === Number(updated.id) ? updated : item
+      )
+    }
+    notify.success(response?.message || 'Đã gửi offer cho ứng viên.')
+    await fetchApplications()
+  } catch (error) {
+    notify.apiError(error, 'Không gửi được offer cho ứng viên.')
+  } finally {
+    sendingOfferId.value = null
+  }
+}
+
+const fetchOnboardingPlan = async () => {
+  if (!selectedApplication.value?.id || !canManageOnboarding.value) return
+  onboardingLoading.value = true
+  try {
+    const response = await employerApplicationService.getOnboarding(selectedApplication.value.id)
+    if (response?.data) {
+      setSelectedOnboardingPlan(response.data)
+    }
+  } catch (error) {
+    notify.apiError(error, 'Không tải được onboarding cho ứng viên.')
+  } finally {
+    onboardingLoading.value = false
+  }
+}
+
+const saveOnboardingPlan = async () => {
+  if (!selectedApplication.value?.id || !canManageOnboarding.value || onboardingSaving.value) return
+  onboardingSaving.value = true
+  try {
+    const response = await employerApplicationService.updateOnboarding(selectedApplication.value.id, {
+      ngay_bat_dau: onboardingForm.ngay_bat_dau || null,
+      dia_diem_lam_viec: onboardingForm.dia_diem_lam_viec || null,
+      trang_thai: onboardingForm.trang_thai,
+      loi_chao_mung: onboardingForm.loi_chao_mung || null,
+      ghi_chu_ung_vien: onboardingForm.ghi_chu_ung_vien || null,
+      ghi_chu_noi_bo: onboardingForm.ghi_chu_noi_bo || null,
+      tai_lieu_can_chuan_bi: onboardingForm.tai_lieu_text
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    })
+    setSelectedOnboardingPlan(response?.data)
+    notify.success(response?.message || 'Đã lưu onboarding.')
+  } catch (error) {
+    notify.apiError(error, 'Không lưu được onboarding.')
+  } finally {
+    onboardingSaving.value = false
+  }
+}
+
+const createOnboardingTask = async () => {
+  if (!selectedApplication.value?.id || !onboardingTaskForm.tieu_de || onboardingTaskSavingId.value) return
+  onboardingTaskSavingId.value = 'new'
+  try {
+    const response = await employerApplicationService.createOnboardingTask(selectedApplication.value.id, {
+      tieu_de: onboardingTaskForm.tieu_de,
+      mo_ta: onboardingTaskForm.mo_ta || null,
+      han_hoan_tat: onboardingTaskForm.han_hoan_tat || null,
+      nguoi_phu_trach: onboardingTaskForm.nguoi_phu_trach,
+    })
+    setSelectedOnboardingPlan(response?.data)
+    onboardingTaskForm.tieu_de = ''
+    onboardingTaskForm.mo_ta = ''
+    onboardingTaskForm.han_hoan_tat = ''
+    onboardingTaskForm.nguoi_phu_trach = 'candidate'
+    notify.success('Đã thêm checklist onboarding.')
+  } catch (error) {
+    notify.apiError(error, 'Không thêm được checklist onboarding.')
+  } finally {
+    onboardingTaskSavingId.value = null
+  }
+}
+
+const updateOnboardingTaskStatus = async (task, status) => {
+  if (!selectedApplication.value?.id || !task?.id || onboardingTaskSavingId.value) return
+  onboardingTaskSavingId.value = task.id
+  try {
+    const response = await employerApplicationService.updateOnboardingTask(selectedApplication.value.id, task.id, {
+      trang_thai: status,
+    })
+    setSelectedOnboardingPlan(response?.data)
+  } catch (error) {
+    notify.apiError(error, 'Không cập nhật được checklist.')
+  } finally {
+    onboardingTaskSavingId.value = null
+  }
+}
+
+const deleteOnboardingTask = async (task) => {
+  if (!selectedApplication.value?.id || !task?.id || onboardingTaskSavingId.value) return
+  onboardingTaskSavingId.value = task.id
+  try {
+    const response = await employerApplicationService.deleteOnboardingTask(selectedApplication.value.id, task.id)
+    setSelectedOnboardingPlan(response?.data)
+    notify.info('Đã xóa checklist onboarding.')
+  } catch (error) {
+    notify.apiError(error, 'Không xóa được checklist.')
+  } finally {
+    onboardingTaskSavingId.value = null
   }
 }
 
@@ -744,11 +1128,19 @@ watch(() => form.hr_phu_trach_id, (value) => {
                 <div class="min-w-0 flex-1">
                   <div class="flex flex-wrap items-center gap-3">
                     <h3 class="text-xl font-bold text-slate-900 dark:text-white">
-                      {{ application.ho_so?.tieu_de_ho_so || 'Hồ sơ ứng viên' }}
+                      {{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}
                     </h3>
                     <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold" :class="statusMeta(application.trang_thai).classes">
                       <span class="h-2 w-2 rounded-full" :class="statusMeta(application.trang_thai).dot" />
                       {{ statusMeta(application.trang_thai).label }}
+                    </span>
+                    <span
+                      v-if="Number(application.trang_thai_offer || 0) > OFFER_STATUS.NOT_SENT"
+                      class="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-bold"
+                      :class="offerStatusMeta(application.trang_thai_offer).classes"
+                    >
+                      <span class="h-2 w-2 rounded-full" :class="offerStatusMeta(application.trang_thai_offer).dot" />
+                      {{ offerStatusMeta(application.trang_thai_offer).label }}
                     </span>
                     <span
                       v-if="application.da_rut_don"
@@ -821,9 +1213,9 @@ watch(() => form.hr_phu_trach_id, (value) => {
 
               <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <div class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
-                  <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Tin ứng tuyển</p>
+                  <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Ứng viên</p>
                   <p class="mt-2 text-sm font-semibold leading-7 text-slate-900 dark:text-white">
-                    {{ application.tin_tuyen_dung?.tieu_de || 'Chưa cập nhật' }}
+                    {{ application.ho_so?.nguoi_dung?.email || 'Chưa có email' }}
                   </p>
                 </div>
                 <div class="rounded-xl bg-slate-50 px-4 py-3 dark:bg-slate-800/70 min-h-[96px] h-full">
@@ -881,6 +1273,19 @@ watch(() => form.hr_phu_trach_id, (value) => {
                 </span>
               </div>
 
+              <div
+                v-if="application.interview_rounds?.length"
+                class="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-800 dark:bg-violet-500/10 dark:text-violet-200"
+              >
+                <span class="font-semibold">Timeline phỏng vấn:</span>
+                <span class="ml-2">
+                  {{ application.interview_rounds.length }} vòng
+                  <span v-if="application.interview_rounds[application.interview_rounds.length - 1]?.ten_vong">
+                    • mới nhất: {{ application.interview_rounds[application.interview_rounds.length - 1].ten_vong }}
+                  </span>
+                </span>
+              </div>
+
               <div v-if="application.link_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">Link / địa điểm:</span>
                 <a
@@ -898,6 +1303,31 @@ watch(() => form.hr_phu_trach_id, (value) => {
               <div v-if="application.ket_qua_phong_van" class="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-600 dark:bg-slate-800/70 dark:text-slate-300">
                 <span class="font-semibold text-slate-900 dark:text-white">Kết quả phỏng vấn:</span>
                 <span class="ml-2">{{ application.ket_qua_phong_van }}</span>
+              </div>
+
+              <div
+                v-if="Number(application.trang_thai_offer || 0) > OFFER_STATUS.NOT_SENT"
+                class="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200"
+              >
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="font-semibold">Offer:</span>
+                  <span
+                    class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-bold"
+                    :class="offerStatusMeta(application.trang_thai_offer).classes"
+                  >
+                    {{ offerStatusMeta(application.trang_thai_offer).label }}
+                  </span>
+                  <span v-if="application.thoi_gian_gui_offer" class="text-xs">
+                    gửi lúc {{ formatDateTime(application.thoi_gian_gui_offer) }}
+                  </span>
+                  <span v-if="application.han_phan_hoi_offer" class="text-xs">
+                    • hạn {{ formatDateTime(application.han_phan_hoi_offer) }}
+                  </span>
+                </div>
+                <p v-if="application.ghi_chu_offer" class="mt-2 leading-6">{{ application.ghi_chu_offer }}</p>
+                <p v-if="application.ghi_chu_phan_hoi_offer" class="mt-2 text-xs leading-5">
+                  Phản hồi ứng viên: {{ application.ghi_chu_phan_hoi_offer }}
+                </p>
               </div>
 
               <p class="text-sm leading-7 text-slate-500 dark:text-slate-400">
@@ -955,8 +1385,8 @@ watch(() => form.hr_phu_trach_id, (value) => {
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
-                  <p class="font-semibold text-slate-900 dark:text-white">{{ application.ho_so?.tieu_de_ho_so || 'Hồ sơ ứng viên' }}</p>
-                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}</p>
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ application.ho_so?.nguoi_dung?.ho_ten || application.ho_so?.nguoi_dung?.email || 'Ứng viên' }}</p>
                 </div>
                 <span class="material-symbols-outlined rounded-xl bg-rose-500/10 p-2 text-[18px] text-rose-600 dark:text-rose-300">priority_high</span>
               </div>
@@ -985,8 +1415,8 @@ watch(() => form.hr_phu_trach_id, (value) => {
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
-                  <p class="font-semibold text-slate-900 dark:text-white">{{ application.ho_so?.tieu_de_ho_so || 'Hồ sơ ứng viên' }}</p>
-                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}</p>
+                  <p class="font-semibold text-slate-900 dark:text-white">{{ application.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}</p>
+                  <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">{{ application.ho_so?.nguoi_dung?.ho_ten || application.ho_so?.nguoi_dung?.email || 'Ứng viên' }}</p>
                 </div>
                 <span class="material-symbols-outlined rounded-xl bg-[#2463eb]/10 p-2 text-[18px] text-[#7ea8ff]">event_available</span>
               </div>
@@ -1036,7 +1466,7 @@ watch(() => form.hr_phu_trach_id, (value) => {
           <div>
             <h3 class="text-xl font-bold text-slate-900 dark:text-white">Cập nhật ứng tuyển</h3>
             <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {{ selectedApplication?.ho_so?.tieu_de_ho_so || 'Hồ sơ ứng viên' }}
+              {{ selectedApplication?.tin_tuyen_dung?.tieu_de || 'Tin tuyển dụng' }}
             </p>
           </div>
           <button class="rounded-xl p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-900 dark:hover:text-white" type="button" @click="closeModal">
@@ -1077,6 +1507,138 @@ watch(() => form.hr_phu_trach_id, (value) => {
             </div>
             <p class="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-200">{{ activeTemplate.body }}</p>
             <p class="mt-3 text-xs leading-5 text-slate-500 dark:text-slate-400">{{ activeTemplate.usage_hint }}</p>
+          </div>
+
+          <div class="md:col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/70">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Timeline phỏng vấn</p>
+                <h4 class="mt-2 text-base font-black text-slate-900 dark:text-white">Quản lý nhiều vòng phỏng vấn riêng biệt</h4>
+                <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Mỗi vòng có lịch, interviewer, kết quả, điểm và Copilot riêng. Vòng đang chọn sẽ được dùng cho Copilot bên dưới.
+                </p>
+              </div>
+              <button
+                class="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200"
+                type="button"
+                @click="resetRoundForm(); roundForm.thu_tu = selectedInterviewRounds.length + 1; roundForm.ten_vong = `Vòng ${selectedInterviewRounds.length + 1}`"
+              >
+                <span class="material-symbols-outlined text-[18px]">add</span>
+                Thêm vòng
+              </button>
+            </div>
+
+            <div v-if="selectedInterviewRounds.length" class="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <button
+                v-for="round in selectedInterviewRounds"
+                :key="round.id"
+                class="rounded-2xl border p-4 text-left transition hover:border-violet-300 hover:bg-white dark:hover:border-violet-500/40 dark:hover:bg-slate-950/50"
+                :class="Number(selectedRoundId) === Number(round.id)
+                  ? 'border-violet-400 bg-white shadow-sm dark:border-violet-500/50 dark:bg-slate-950/50'
+                  : 'border-slate-200 bg-slate-100/70 dark:border-slate-800 dark:bg-slate-950/30'"
+                type="button"
+                @click="selectRound(round)"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="font-black text-slate-900 dark:text-white">{{ round.ten_vong }}</p>
+                    <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                      {{ roundTypeLabel(round.loai_vong) }} • {{ formatDateTime(round.ngay_hen_phong_van) }}
+                    </p>
+                  </div>
+                  <span class="rounded-full px-2.5 py-1 text-[11px] font-bold" :class="roundStatusMeta(round.trang_thai).classes">
+                    {{ roundStatusMeta(round.trang_thai).label }}
+                  </span>
+                </div>
+                <p v-if="round.nguoi_phong_van" class="mt-2 text-xs text-slate-500 dark:text-slate-400">Interviewer: {{ round.nguoi_phong_van }}</p>
+                <p class="mt-2 text-xs" :class="interviewAttendanceMeta(round.trang_thai_tham_gia).classes">
+                  {{ interviewAttendanceMeta(round.trang_thai_tham_gia).label }}
+                </p>
+              </button>
+            </div>
+
+            <div v-else class="mt-4 rounded-2xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              Chưa có vòng phỏng vấn riêng. Tạo vòng đầu tiên để chuẩn hóa timeline.
+            </div>
+
+            <div class="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Tên vòng</label>
+                <input v-model="roundForm.ten_vong" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Vòng 1 - HR screening">
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Loại vòng</label>
+                <select v-model="roundForm.loai_vong" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <option value="hr">HR screening</option>
+                  <option value="technical">Technical</option>
+                  <option value="manager">Manager</option>
+                  <option value="final">Final</option>
+                  <option value="culture">Culture fit</option>
+                  <option value="other">Khác</option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Thời gian</label>
+                <input v-model="roundForm.ngay_hen_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" type="datetime-local">
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Hình thức</label>
+                <select v-model="roundForm.hinh_thuc_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <option value="">Chưa chọn</option>
+                  <option value="online">Online</option>
+                  <option value="offline">Trực tiếp</option>
+                  <option value="phone">Điện thoại</option>
+                </select>
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Interviewer</label>
+                <input v-model="roundForm.nguoi_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Tên người phỏng vấn">
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Trạng thái vòng</label>
+                <select v-model="roundForm.trang_thai" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <option :value="0">Đã lên lịch</option>
+                  <option :value="1">Hoàn thành</option>
+                  <option :value="2">Đã hủy</option>
+                </select>
+              </div>
+              <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link / địa điểm</label>
+                <input v-model="roundForm.link_phong_van" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="https://meet.google.com/... hoặc địa điểm">
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Điểm</label>
+                <input v-model="roundForm.diem_so" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" min="0" max="10" type="number">
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Kết quả</label>
+                <input v-model="roundForm.ket_qua" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Qua vòng / cần cân nhắc...">
+              </div>
+              <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ghi chú vòng</label>
+                <textarea v-model="roundForm.ghi_chu" class="min-h-[90px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-violet-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Ghi chú riêng cho vòng này..." />
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap justify-end gap-2">
+              <button
+                v-if="roundForm.id"
+                class="rounded-xl border border-rose-200 px-4 py-2 text-sm font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-60 dark:border-rose-500/20 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                :disabled="roundDeletingId === roundForm.id"
+                type="button"
+                @click="deleteInterviewRound(selectedRound)"
+              >
+                {{ roundDeletingId === roundForm.id ? 'Đang xóa...' : 'Xóa vòng' }}
+              </button>
+              <button
+                class="rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-violet-700 disabled:opacity-60"
+                :disabled="roundSaving || !roundForm.ten_vong"
+                type="button"
+                @click="saveInterviewRound"
+              >
+                {{ roundSaving ? 'Đang lưu...' : (roundForm.id ? 'Lưu vòng' : 'Tạo vòng') }}
+              </button>
+            </div>
           </div>
 
           <div class="md:col-span-2 rounded-2xl border border-violet-100 bg-violet-50 p-4 dark:border-violet-500/20 dark:bg-violet-500/10">
@@ -1310,6 +1872,180 @@ watch(() => form.hr_phu_trach_id, (value) => {
               placeholder="Ví dụ: Qua vòng 1, cần thêm bài test..."
               type="text"
             >
+          </div>
+
+          <div class="md:col-span-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/10">
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-black uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">Offer / nhận việc</p>
+                <h4 class="mt-2 text-base font-black text-slate-900 dark:text-white">
+                  Gửi đề nghị nhận việc và chờ ứng viên phản hồi
+                </h4>
+                <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Khi gửi offer, đơn sẽ chuyển sang trạng thái trúng tuyển và ứng viên có thể chấp nhận hoặc từ chối trên UI/email.
+                </p>
+              </div>
+              <span
+                v-if="selectedApplication"
+                class="inline-flex rounded-full px-3 py-1 text-xs font-bold"
+                :class="offerStatusMeta(selectedApplication.trang_thai_offer).classes"
+              >
+                {{ offerStatusMeta(selectedApplication.trang_thai_offer).label }}
+              </span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div class="md:col-span-2">
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Tóm tắt offer</label>
+                <textarea
+                  v-model="offerForm.ghi_chu_offer"
+                  :disabled="!canSendOffer(selectedApplication)"
+                  class="min-h-[110px] w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 dark:border-emerald-500/20 dark:bg-slate-950/50 dark:text-white disabled:opacity-60"
+                  maxlength="5000"
+                  placeholder="Ví dụ: mức lương, ngày bắt đầu, địa điểm làm việc, phúc lợi chính..."
+                />
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Link tài liệu offer</label>
+                <input
+                  v-model="offerForm.link_offer"
+                  :disabled="!canSendOffer(selectedApplication)"
+                  class="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 dark:border-emerald-500/20 dark:bg-slate-950/50 dark:text-white disabled:opacity-60"
+                  placeholder="https://..."
+                  type="url"
+                >
+              </div>
+              <div>
+                <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Hạn phản hồi</label>
+                <input
+                  v-model="offerForm.han_phan_hoi_offer"
+                  :disabled="!canSendOffer(selectedApplication)"
+                  class="w-full rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-emerald-500 dark:border-emerald-500/20 dark:bg-slate-950/50 dark:text-white disabled:opacity-60"
+                  type="datetime-local"
+                >
+              </div>
+            </div>
+
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <p class="text-xs leading-5 text-emerald-800 dark:text-emerald-200">
+                Link phản hồi trong email sẽ hết hạn theo hạn phản hồi offer. Nếu bỏ trống, hệ thống dùng mặc định 14 ngày.
+              </p>
+              <button
+                class="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                :disabled="!canSendOffer(selectedApplication) || sendingOfferId === selectedApplication?.id"
+                type="button"
+                @click="sendOffer"
+              >
+                <span
+                  class="material-symbols-outlined text-[18px]"
+                  :class="sendingOfferId === selectedApplication?.id ? 'animate-spin' : ''"
+                >
+                  {{ sendingOfferId === selectedApplication?.id ? 'progress_activity' : 'workspace_premium' }}
+                </span>
+                {{ Number(selectedApplication?.trang_thai_offer || 0) === OFFER_STATUS.SENT ? 'Gửi lại / cập nhật offer' : 'Gửi offer' }}
+              </button>
+            </div>
+          </div>
+
+          <div
+            v-if="canManageOnboarding"
+            class="md:col-span-2 rounded-2xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-500/20 dark:bg-blue-500/10"
+          >
+            <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <p class="text-xs font-black uppercase tracking-[0.2em] text-blue-700 dark:text-blue-300">Onboarding sau offer</p>
+                <h4 class="mt-2 text-base font-black text-slate-900 dark:text-white">Checklist chuẩn bị nhận việc</h4>
+                <p class="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-300">
+                  Theo dõi ngày bắt đầu, tài liệu cần chuẩn bị và các bước HR/ứng viên cần hoàn tất sau khi ứng viên chấp nhận offer.
+                </p>
+              </div>
+              <div class="text-right">
+                <p class="text-2xl font-black text-[#2463eb]">{{ selectedOnboardingPlan?.progress?.percent || 0 }}%</p>
+                <p class="text-xs font-bold text-slate-500 dark:text-slate-300">
+                  {{ selectedOnboardingPlan?.progress?.done || 0 }}/{{ selectedOnboardingPlan?.progress?.total || 0 }} việc
+                </p>
+              </div>
+            </div>
+
+            <div v-if="onboardingLoading" class="mt-4 rounded-xl bg-white/70 p-4 text-sm text-slate-500 dark:bg-slate-950/40 dark:text-slate-300">
+              Đang tải onboarding...
+            </div>
+
+            <div v-else class="mt-4 space-y-4">
+              <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div>
+                  <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ngày bắt đầu</label>
+                  <input v-model="onboardingForm.ngay_bat_dau" type="date" class="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-blue-500/20 dark:bg-slate-950/50 dark:text-white">
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Trạng thái</label>
+                  <select v-model="onboardingForm.trang_thai" class="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-blue-500/20 dark:bg-slate-950/50 dark:text-white">
+                    <option value="not_started">Chưa bắt đầu</option>
+                    <option value="preparing">Đang chuẩn bị</option>
+                    <option value="in_progress">Đang thực hiện</option>
+                    <option value="completed">Hoàn tất</option>
+                    <option value="cancelled">Hủy</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Địa điểm</label>
+                  <input v-model="onboardingForm.dia_diem_lam_viec" class="w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-blue-500/20 dark:bg-slate-950/50 dark:text-white" placeholder="Văn phòng / remote / hybrid">
+                </div>
+                <div class="md:col-span-3">
+                  <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Lời nhắn cho ứng viên</label>
+                  <textarea v-model="onboardingForm.loi_chao_mung" class="min-h-[86px] w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-blue-500/20 dark:bg-slate-950/50 dark:text-white" placeholder="Chào mừng, hướng dẫn ngày đầu tiên..." />
+                </div>
+                <div class="md:col-span-2">
+                  <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Tài liệu cần chuẩn bị</label>
+                  <textarea v-model="onboardingForm.tai_lieu_text" class="min-h-[100px] w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-blue-500/20 dark:bg-slate-950/50 dark:text-white" placeholder="Mỗi dòng là một tài liệu" />
+                </div>
+                <div>
+                  <label class="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">Ghi chú nội bộ</label>
+                  <textarea v-model="onboardingForm.ghi_chu_noi_bo" class="min-h-[100px] w-full rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500 dark:border-blue-500/20 dark:bg-slate-950/50 dark:text-white" placeholder="Chỉ HR thấy" />
+                </div>
+              </div>
+
+              <div class="flex justify-end">
+                <button class="inline-flex items-center gap-2 rounded-xl bg-[#2463eb] px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-700 disabled:opacity-60" type="button" :disabled="onboardingSaving" @click="saveOnboardingPlan">
+                  <span class="material-symbols-outlined text-[18px]" :class="onboardingSaving ? 'animate-spin' : ''">{{ onboardingSaving ? 'progress_activity' : 'save' }}</span>
+                  Lưu onboarding
+                </button>
+              </div>
+
+              <div class="rounded-2xl border border-blue-100 bg-white p-4 dark:border-blue-500/20 dark:bg-slate-950/40">
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_150px_auto]">
+                  <input v-model="onboardingTaskForm.tieu_de" class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white" placeholder="Tên checklist mới">
+                  <input v-model="onboardingTaskForm.han_hoan_tat" type="date" class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                  <select v-model="onboardingTaskForm.nguoi_phu_trach" class="rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-blue-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white">
+                    <option value="candidate">Ứng viên</option>
+                    <option value="hr">HR</option>
+                  </select>
+                  <button class="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white disabled:opacity-60" type="button" :disabled="!onboardingTaskForm.tieu_de || onboardingTaskSavingId === 'new'" @click="createOnboardingTask">Thêm</button>
+                </div>
+
+                <div class="mt-4 space-y-2">
+                  <div v-for="task in selectedOnboardingPlan?.tasks || []" :key="task.id" class="flex flex-col gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p class="font-bold text-slate-900 dark:text-white">{{ task.tieu_de }}</p>
+                      <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                        {{ task.nguoi_phu_trach === 'candidate' ? 'Ứng viên phụ trách' : 'HR phụ trách' }}
+                        <span v-if="task.han_hoan_tat"> • hạn {{ task.han_hoan_tat }}</span>
+                      </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                      <select :value="task.trang_thai" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold outline-none dark:border-slate-700 dark:bg-slate-950 dark:text-white" :disabled="onboardingTaskSavingId === task.id" @change="updateOnboardingTaskStatus(task, $event.target.value)">
+                        <option value="pending">Chờ làm</option>
+                        <option value="in_progress">Đang làm</option>
+                        <option value="done">Hoàn tất</option>
+                        <option value="skipped">Bỏ qua</option>
+                      </select>
+                      <button class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-bold text-rose-600 disabled:opacity-60 dark:border-rose-500/30" type="button" :disabled="onboardingTaskSavingId === task.id" @click="deleteOnboardingTask(task)">Xóa</button>
+                    </div>
+                  </div>
+                  <p v-if="!(selectedOnboardingPlan?.tasks || []).length" class="text-sm text-slate-500 dark:text-slate-400">Chưa có checklist onboarding.</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="md:col-span-2">

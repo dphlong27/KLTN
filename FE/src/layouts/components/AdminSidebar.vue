@@ -52,6 +52,10 @@ defineProps({
         <span class="material-symbols-outlined text-[22px]">travel_explore</span>
         <span v-if="!collapsed" class="text-sm">AI Advising</span>
       </RouterLink>
+      <RouterLink to="/admin/ai-usage" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'AI Usage' : ''">
+        <span class="material-symbols-outlined text-[22px]">memory</span>
+        <span v-if="!collapsed" class="text-sm">AI Usage</span>
+      </RouterLink>
       <RouterLink to="/admin/applications" active-class="active-nav" class="nav-link flex items-center gap-3 rounded-xl px-3 py-2.5 text-slate-600 transition-colors font-medium hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800" :class="collapsed ? 'justify-center' : ''" :title="collapsed ? 'Ứng tuyển' : ''">
         <span class="material-symbols-outlined text-[22px]">assignment</span>
         <span v-if="!collapsed" class="text-sm">Ứng tuyển</span>

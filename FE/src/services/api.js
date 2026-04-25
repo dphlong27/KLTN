@@ -68,6 +68,16 @@ const apiCall = async (endpoint, options = {}) => {
       throw {
         status: response.status,
         message: data.message || `Lỗi ${response.status}: ${response.statusText}`,
+        code: data.code || null,
+        errors: data.errors || null,
+        requiredRoles: data.required_roles || null,
+        requiredRoleLabels: data.required_role_labels || null,
+        currentRole: data.current_role || null,
+        currentRoleLabel: data.current_role_label || null,
+        requiredCompanyRoles: data.required_company_roles || null,
+        requiredCompanyRoleLabels: data.required_company_role_labels || null,
+        currentCompanyRole: data.current_company_role || null,
+        currentCompanyRoleLabel: data.current_company_role_label || null,
         data
       }
     }
@@ -107,6 +117,13 @@ const streamApiCall = async (endpoint, options = {}, handlers = {}) => {
       if (contentType.includes('application/json')) {
         const data = await response.json()
         message = data?.message || message
+        throw {
+          status: response.status,
+          message,
+          code: data?.code || null,
+          errors: data?.errors || null,
+          data,
+        }
       } else {
         const text = await response.text()
         message = text || message
@@ -476,6 +493,54 @@ export const adminAuditLogService = {
       method: 'GET',
     })
   },
+}
+
+const buildAiUsageQuery = (options = {}) => {
+  const params = new URLSearchParams()
+  const keys = [
+    'page',
+    'per_page',
+    'days',
+    'feature',
+    'status',
+    'used_fallback',
+    'user_id',
+    'company_id',
+    'request_ref_type',
+    'request_ref_id',
+    'from',
+    'to',
+  ]
+
+  keys.forEach((key) => {
+    const value = options[key]
+    if (value !== undefined && value !== null && value !== '') {
+      params.append(key, value)
+    }
+  })
+
+  return params.toString()
+}
+
+export const adminAiUsageService = {
+  getOverview: (options = {}) => {
+    const query = buildAiUsageQuery(options)
+    return apiCall(`/admin/ai-usage/overview${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getLogs: (options = {}) => {
+    const query = buildAiUsageQuery(options)
+    return apiCall(`/admin/ai-usage/logs${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getFeatures: () =>
+    apiCall('/admin/ai-usage/features', {
+      method: 'GET',
+    }),
 }
 
 export const notificationService = {
@@ -1091,15 +1156,72 @@ export const employerApplicationService = {
       method: 'GET',
     }),
 
-  generateInterviewCopilot: (id) =>
+  getInterviewRounds: (id) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds`, {
+      method: 'GET',
+    }),
+
+  createInterviewRound: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateInterviewRound: (id, roundId, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds/${roundId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteInterviewRound: (id, roundId) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-rounds/${roundId}`, {
+      method: 'DELETE',
+    }),
+
+  generateInterviewCopilot: (id, data = {}) =>
     apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-copilot/generate`, {
       method: 'POST',
+      body: JSON.stringify(data),
     }),
 
   evaluateInterviewCopilot: (id, data) =>
     apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/interview-copilot/evaluate`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+
+  sendOffer: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/gui-offer`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getOnboarding: (id) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding`, {
+      method: 'GET',
+    }),
+
+  updateOnboarding: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  createOnboardingTask: (id, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateOnboardingTask: (id, taskId, data) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteOnboardingTask: (id, taskId) =>
+    apiCall(`/nha-tuyen-dung/ung-tuyens/${id}/onboarding/tasks/${taskId}`, {
+      method: 'DELETE',
     }),
 
   resendInterviewEmail: (id) =>
@@ -1210,6 +1332,20 @@ export const savedJobService = {
     })
 }
 
+// === Candidate Re-engagement APIs ===
+export const reEngagementService = {
+  getInsights: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.similar_limit) params.append('similar_limit', options.similar_limit)
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/re-engagement/insights${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+}
+
 // === Candidate Follow Company APIs ===
 export const followCompanyService = {
   getFollowedCompanies: (options = {}) => {
@@ -1228,6 +1364,41 @@ export const followCompanyService = {
   toggleFollowCompany: (companyId) =>
     apiCall(`/ung-vien/cong-ty-theo-doi/${companyId}/toggle`, {
       method: 'POST',
+    }),
+}
+
+// === Candidate Smart Job Alert APIs ===
+export const smartJobAlertService = {
+  getAlerts: (options = {}) => {
+    const params = new URLSearchParams()
+
+    if (options.page) params.append('page', options.page)
+    if (options.per_page) params.append('per_page', options.per_page)
+    if (options.match_level) params.append('match_level', options.match_level)
+    if (options.trang_thai) params.append('trang_thai', options.trang_thai)
+    if (options.min_score !== undefined && options.min_score !== null && options.min_score !== '') {
+      params.append('min_score', options.min_score)
+    }
+
+    const query = params.toString()
+    return apiCall(`/ung-vien/smart-job-alerts${query ? `?${query}` : ''}`, {
+      method: 'GET',
+    })
+  },
+
+  getStats: () =>
+    apiCall('/ung-vien/smart-job-alerts/thong-ke', {
+      method: 'GET',
+    }),
+
+  markAsRead: (id) =>
+    apiCall(`/ung-vien/smart-job-alerts/${id}/read`, {
+      method: 'PATCH',
+    }),
+
+  dismiss: (id) =>
+    apiCall(`/ung-vien/smart-job-alerts/${id}/dismiss`, {
+      method: 'PATCH',
     }),
 }
 
@@ -1289,6 +1460,14 @@ export const profileService = {
     apiCall(`/ung-vien/ho-sos/${id}/tailor/${jobId}`, {
       method: 'POST',
       body: JSON.stringify(data),
+    }),
+}
+
+export const cvBuilderAiService = {
+  generateWriting: (payload) =>
+    apiCall('/ung-vien/cv-builder/ai-writing', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 }
 
@@ -1383,6 +1562,31 @@ export const applicationService = {
       body: JSON.stringify({
         trang_thai_tham_gia_phong_van,
       })
+    }),
+
+  confirmInterviewRoundAttendance: (id, roundId, trang_thai_tham_gia_phong_van) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/interview-rounds/${roundId}/xac-nhan`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        trang_thai_tham_gia_phong_van,
+      })
+    }),
+
+  respondOffer: (id, action) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/phan-hoi-offer`, {
+      method: 'PATCH',
+      body: JSON.stringify({ action }),
+    }),
+
+  getOnboarding: (id) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/onboarding`, {
+      method: 'GET',
+    }),
+
+  updateOnboardingTask: (id, taskId, trang_thai) =>
+    apiCall(`/ung-vien/ung-tuyens/${id}/onboarding/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ trang_thai }),
     }),
 
   withdrawApplication: (id) =>
@@ -1583,12 +1787,16 @@ export default {
   companyService,
   jobService,
   savedJobService,
+  reEngagementService,
   followCompanyService,
+  smartJobAlertService,
   profileService,
+  cvBuilderAiService,
   applicationService,
   matchingService,
   adminProfileService,
   adminUserSkillService,
+  adminAiUsageService,
   aiChatService,
   mockInterviewService,
   adminMatchingService,

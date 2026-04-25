@@ -618,6 +618,15 @@ class NhaTuyenDungShortlistController extends Controller
                     $item['ai_model_version'] = $data['model_version'] ?? ($response['model_version'] ?? 'ai_service');
                     $item['confidence'] = $this->confidenceInsightFromMappedProfile($item, $jobProfile, true);
                 } catch (RuntimeException $exception) {
+                    $this->aiClientService->recordFallback(
+                        'employer_shortlist_ai_explanation',
+                        $exception->getMessage(),
+                        [
+                            'ho_so_id' => (int) $item['ho_so']['id'],
+                            'tin_tuyen_dung_id' => (int) $tin->id,
+                        ],
+                        ['scope' => 'shortlist_item_explanation']
+                    );
                     $item['ai_error'] = $exception->getMessage();
                     $item['confidence'] = $this->confidenceInsightFromMappedProfile($item, $jobProfile, false);
                 }

@@ -40,6 +40,8 @@ const toneByType = (type) => {
   const normalizedType = String(type || '')
 
   if (normalizedType.includes('interview')) return 'bg-violet-500/10 text-violet-600 dark:text-violet-300'
+  if (normalizedType.includes('onboarding')) return 'bg-blue-500/10 text-blue-600 dark:text-blue-300'
+  if (normalizedType.includes('smart_job_alert')) return 'bg-amber-500/10 text-amber-600 dark:text-amber-300'
   if (normalizedType.includes('offer') || normalizedType.includes('hired')) return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-300'
   if (normalizedType.includes('rejected') || normalizedType.includes('declined')) return 'bg-rose-500/10 text-rose-600 dark:text-rose-300'
   if (normalizedType.includes('follow') || normalizedType.includes('job')) return 'bg-[#2463eb]/10 text-[#2463eb]'
@@ -52,6 +54,8 @@ const iconByType = (type) => {
   const normalizedType = String(type || '')
 
   if (normalizedType.includes('interview')) return 'calendar_month'
+  if (normalizedType.includes('onboarding')) return 'fact_check'
+  if (normalizedType.includes('smart_job_alert')) return 'notifications_active'
   if (normalizedType.includes('offer')) return 'workspace_premium'
   if (normalizedType.includes('hired')) return 'task_alt'
   if (normalizedType.includes('rejected') || normalizedType.includes('declined')) return 'cancel'

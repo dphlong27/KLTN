@@ -42,6 +42,7 @@ class ApplicationChanged implements ShouldBroadcastNow
                 'tin_tuyen_dung_id' => (int) $application->tin_tuyen_dung_id,
                 'tin_tuyen_dung_tieu_de' => $application->tinTuyenDung?->tieu_de,
                 'trang_thai' => (int) $application->trang_thai,
+                'trang_thai_offer' => $application->trang_thai_offer !== null ? (int) $application->trang_thai_offer : null,
                 'trang_thai_tham_gia_phong_van' => $application->trang_thai_tham_gia_phong_van,
                 'da_rut_don' => (bool) $application->da_rut_don,
                 ...$payload,

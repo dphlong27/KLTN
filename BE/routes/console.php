@@ -4,9 +4,11 @@ use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 use App\Models\AppNotification;
+use App\Models\NguoiDung;
 use App\Models\UngTuyen;
 use App\Notifications\InterviewScheduledNotification;
 use App\Services\AppNotificationService;
+use App\Services\ReEngagementService;
 use Symfony\Component\Console\Command\Command;
 
 Artisan::command('inspire', function () {
@@ -180,6 +182,55 @@ Artisan::command('interviews:notify-overdue-results {--dry-run : Chỉ liệt k�
     return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
 })->purpose('Tạo thông báo nội bộ cho HR khi lịch phỏng vấn đã qua nhưng chưa chốt kết quả cuối.');
 
+Artisan::command('reengagement:run {--dry-run : Chỉ liệt kê, không tạo thông báo}', function () {
+    $dryRun = (bool) $this->option('dry-run');
+    $command = $this;
+    $processed = 0;
+    $sent = [
+        'expiring_notifications' => 0,
+        'stale_notifications' => 0,
+        'similar_notifications' => 0,
+    ];
+    $failed = 0;
+
+    NguoiDung::query()
+        ->where('vai_tro', NguoiDung::VAI_TRO_UNG_VIEN)
+        ->where('trang_thai', 1)
+        ->whereHas('tinDaLuus')
+        ->withCount('tinDaLuus')
+        ->orderBy('id')
+        ->chunkById(100, function ($candidates) use ($command, $dryRun, &$processed, &$sent, &$failed): void {
+            foreach ($candidates as $candidate) {
+                try {
+                    $result = app(ReEngagementService::class)->runForCandidate($candidate, $dryRun);
+                    $processed++;
+
+                    foreach ($sent as $key => $value) {
+                        $sent[$key] = $value + (int) ($result[$key] ?? 0);
+                    }
+
+                    if ($dryRun) {
+                        $command->line("[DRY-RUN] Ứng viên #{$candidate->id}: expiring={$result['expiring_notifications']}, stale={$result['stale_notifications']}, similar={$result['similar_notifications']}");
+                    }
+                } catch (Throwable $exception) {
+                    report($exception);
+                    $failed++;
+                    $command->error("Re-engagement cho ứng viên #{$candidate->id} thất bại: {$exception->getMessage()}");
+                }
+            }
+        });
+
+    $this->info(
+        "Hoàn tất Re-engagement: xử lý {$processed} ứng viên, "
+        . "sắp hết hạn {$sent['expiring_notifications']}, "
+        . "follow-up {$sent['stale_notifications']}, "
+        . "job tương tự {$sent['similar_notifications']}, "
+        . "lỗi {$failed}."
+    );
+
+    return $failed > 0 ? Command::FAILURE : Command::SUCCESS;
+})->purpose('Tạo notification re-engagement cho ứng viên dựa trên tin đã lưu, hạn ứng tuyển và job tương tự.');
+
 Schedule::command('interviews:send-reminders --hours=24')
     ->everyFifteenMinutes()
     ->withoutOverlapping()
@@ -187,5 +238,10 @@ Schedule::command('interviews:send-reminders --hours=24')
 
 Schedule::command('interviews:notify-overdue-results')
     ->hourly()
+    ->withoutOverlapping()
+    ->onOneServer();
+
+Schedule::command('reengagement:run')
+    ->dailyAt('08:00')
     ->withoutOverlapping()
     ->onOneServer();

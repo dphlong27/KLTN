@@ -4,38 +4,73 @@ namespace App\Http\Middleware;
 
 use App\Models\CongTy;
 use Closure;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class KiemTraVaiTroNoiBoCongTy
 {
+    private function errorResponse(
+        string $code,
+        string $message,
+        int $status,
+        array $extra = [],
+    ): JsonResponse {
+        return response()->json([
+            'success' => false,
+            'code' => $code,
+            'message' => $message,
+            ...$extra,
+        ], $status);
+    }
+
+    private function roleLabels(array $roles): array
+    {
+        return collect($roles)
+            ->map(fn (string $role) => CongTy::nhanVaiTroNoiBo($role))
+            ->values()
+            ->all();
+    }
+
     public function handle(Request $request, Closure $next, string ...$vaiTrosNoiBo): Response
     {
         $nguoiDung = $request->user();
 
         if (!$nguoiDung) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Chưa xác thực. Vui lòng đăng nhập.',
-            ], 401);
+            return $this->errorResponse(
+                'AUTH_UNAUTHENTICATED',
+                'Vui lòng đăng nhập để tiếp tục.',
+                401,
+            );
         }
 
         $congTy = $nguoiDung->congTyHienTai();
 
         if (!$congTy) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn chưa thuộc công ty nào.',
-            ], 403);
+            return $this->errorResponse(
+                'COMPANY_REQUIRED',
+                'Bạn cần tạo hoặc tham gia công ty trước khi sử dụng chức năng này.',
+                403,
+                [
+                    'current_role' => 'nha_tuyen_dung',
+                    'required_company' => true,
+                ],
+            );
         }
 
         $vaiTroNoiBo = $nguoiDung->layVaiTroNoiBoCongTy($congTy);
 
         if (!$vaiTroNoiBo || !in_array($vaiTroNoiBo, CongTy::danhSachVaiTroNoiBo(), true)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Bạn không thuộc nhóm HR nội bộ của công ty này.',
-            ], 403);
+            return $this->errorResponse(
+                'COMPANY_ROLE_MISSING',
+                'Bạn không thuộc nhóm HR nội bộ của công ty này.',
+                403,
+                [
+                    'company_id' => $congTy->id,
+                    'current_company_role' => $vaiTroNoiBo,
+                    'current_company_role_label' => CongTy::nhanVaiTroNoiBo($vaiTroNoiBo),
+                ],
+            );
         }
 
         if (!$vaiTrosNoiBo) {
@@ -43,10 +78,18 @@ class KiemTraVaiTroNoiBoCongTy
         }
 
         if (!$nguoiDung->coVaiTroNoiBoCongTy($vaiTrosNoiBo, $congTy)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Vai trò nội bộ hiện tại không đủ quyền thực hiện hành động này.',
-            ], 403);
+            return $this->errorResponse(
+                'COMPANY_ROLE_FORBIDDEN',
+                'Vai trò nội bộ hiện tại không đủ quyền thực hiện thao tác này.',
+                403,
+                [
+                    'company_id' => $congTy->id,
+                    'required_company_roles' => $vaiTrosNoiBo,
+                    'required_company_role_labels' => $this->roleLabels($vaiTrosNoiBo),
+                    'current_company_role' => $vaiTroNoiBo,
+                    'current_company_role_label' => CongTy::nhanVaiTroNoiBo($vaiTroNoiBo),
+                ],
+            );
         }
 
         return $next($request);

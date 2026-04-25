@@ -60,6 +60,17 @@ class CvTailoringController extends Controller
                 $tailoring = $this->normalizeTailoringPayload($response['data'] ?? $response, $sourceProfile, $job);
             } catch (RuntimeException $exception) {
                 $usedFallback = true;
+                $this->aiClientService->recordFallback(
+                    'cv_tailoring',
+                    $exception->getMessage(),
+                    [
+                        'ho_so_id' => (int) $sourceProfile->id,
+                        'tin_tuyen_dung_id' => (int) $job->id,
+                        'cv_profile' => $cvProfile,
+                        'jd_profile' => $jdProfile,
+                    ],
+                    ['preview_only' => (bool) ($data['preview_only'] ?? false)]
+                );
                 $tailoring = $this->fallbackTailoringPayload($sourceProfile, $job, $cvProfile, $jdProfile, $exception->getMessage());
             }
         }

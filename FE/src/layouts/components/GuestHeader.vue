@@ -26,7 +26,12 @@ const currentUser = computed(() => {
   authVersion.value
   return getStoredUser()
 })
-const currentRole = computed(() => currentUser.value?.vai_tro)
+const currentRole = computed(() => {
+  const role = currentUser.value?.vai_tro
+  if (role === undefined || role === null) return null
+  const normalizedRole = Number(role)
+  return Number.isNaN(normalizedRole) ? null : normalizedRole
+})
 const isAuthenticatedUser = computed(() => hasAuthToken.value && currentRole.value !== undefined && currentRole.value !== null)
 const displayName = computed(() => currentUser.value?.ho_ten || currentUser.value?.email || 'Tài khoản')
 const avatarLetter = computed(() => displayName.value.trim().charAt(0).toUpperCase() || 'U')
@@ -38,7 +43,7 @@ const accountLabel = computed(() => {
 const dashboardLink = computed(() => {
   if (currentRole.value === 1) return '/employer/home'
   if (currentRole.value === 2) return '/admin'
-  return '/'
+  return '/dashboard'
 })
 const dashboardText = computed(() => {
   if (currentRole.value === 1) return 'Vào trang chủ tuyển dụng'

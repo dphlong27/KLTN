@@ -41,7 +41,7 @@ const pageCopy = computed(() => {
       showcaseDescription:
         'Thiết lập hồ sơ doanh nghiệp, đăng tin nhanh hơn và tiếp cận đúng ứng viên với hệ thống tuyển dụng thông minh.',
       headTitle: 'Đăng ký nhà tuyển dụng',
-      headDescription: 'Tạo tài khoản doanh nghiệp để quản lý công ty và đăng tin tuyển dụng.',
+      headDescription: 'Tạo tài khoản để quản lý công ty hoặc nhận lời mời tham gia đội ngũ HR.',
       submitLabel: 'Tạo tài khoản tuyển dụng',
       loginHint: 'Đã có tài khoản doanh nghiệp?',
       fullNameLabel: 'Người liên hệ',
@@ -98,10 +98,6 @@ const validateRegister = () => {
   clearValidationErrors()
 
   if (isEmployer.value) {
-    if (!registerForm.companyName.trim()) {
-      registerErrors.companyName = 'Vui lòng nhập tên công ty'
-    }
-
     if (!registerForm.contactPerson.trim()) {
       registerErrors.contactPerson = 'Vui lòng nhập người liên hệ'
     }
@@ -144,9 +140,10 @@ const handleRegister = async () => {
 
   try {
     const registeredEmail = registerForm.email.trim()
-    const companyDraft = isEmployer.value
+    const companyName = registerForm.companyName.trim()
+    const companyDraft = isEmployer.value && companyName
       ? {
-        ten_cong_ty: registerForm.companyName.trim(),
+        ten_cong_ty: companyName,
         email: registeredEmail,
         dien_thoai: registerForm.phone.trim(),
         nguoi_lien_he: registerForm.contactPerson.trim(),
@@ -271,17 +268,18 @@ const handleRegister = async () => {
 
           <form class="auth-form" @submit.prevent="handleRegister">
             <div v-if="isEmployer" class="field-group">
-              <label for="companyName">Tên công ty</label>
+              <label for="companyName">Tên công ty <span class="optional-label">không bắt buộc</span></label>
               <div class="input-shell" :class="{ 'input-shell--error': registerErrors.companyName }">
                 <span class="material-symbols-outlined">business</span>
                 <input
                   id="companyName"
                   v-model="registerForm.companyName"
                   type="text"
-                  placeholder="Nhập tên công ty"
+                  placeholder="Bỏ trống nếu bạn là HR được mời"
                   :disabled="isLoading"
                 >
               </div>
+              <span class="field-hint">Chỉ nhập khi bạn muốn tự tạo hồ sơ công ty sau khi đăng nhập.</span>
               <span v-if="registerErrors.companyName" class="field-error">{{ registerErrors.companyName }}</span>
             </div>
 
@@ -609,6 +607,12 @@ const handleRegister = async () => {
   color: #0f172a;
 }
 
+.optional-label {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
 .input-shell {
   display: flex;
   align-items: center;
@@ -659,6 +663,14 @@ const handleRegister = async () => {
   margin-top: 0.45rem;
   color: #dc2626;
   font-size: 0.82rem;
+}
+
+.field-hint {
+  display: block;
+  margin-top: 0.45rem;
+  color: #64748b;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .submit-button {

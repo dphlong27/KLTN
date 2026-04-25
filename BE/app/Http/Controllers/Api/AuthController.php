@@ -154,6 +154,7 @@ class AuthController extends Controller
         if (!$nguoiDung || !Hash::check($request->mat_khau, $nguoiDung->mat_khau)) {
             return response()->json([
                 'success' => false,
+                'code' => 'INVALID_CREDENTIALS',
                 'message' => 'Email hoặc mật khẩu không đúng.',
             ], 401);
         }
@@ -161,13 +162,22 @@ class AuthController extends Controller
         if (!$nguoiDung->isActive()) {
             return response()->json([
                 'success' => false,
+                'code' => 'ACCOUNT_LOCKED',
                 'message' => 'Tài khoản đã bị khoá. Vui lòng liên hệ quản trị viên.',
+                'current_role' => match ((int) $nguoiDung->vai_tro) {
+                    NguoiDung::VAI_TRO_ADMIN => 'admin',
+                    NguoiDung::VAI_TRO_NHA_TUYEN_DUNG => 'nha_tuyen_dung',
+                    NguoiDung::VAI_TRO_UNG_VIEN => 'ung_vien',
+                    default => null,
+                },
+                'current_role_label' => $nguoiDung->ten_vai_tro,
             ], 403);
         }
 
         if (!$nguoiDung->isAdmin() && !$nguoiDung->hasVerifiedEmail()) {
             return response()->json([
                 'success' => false,
+                'code' => 'EMAIL_NOT_VERIFIED',
                 'message' => 'Tài khoản chưa xác thực email. Vui lòng kiểm tra hộp thư và xác nhận trước khi đăng nhập.',
                 'data' => [
                     'requires_email_verification' => true,

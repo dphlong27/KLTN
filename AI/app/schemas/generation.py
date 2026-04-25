@@ -20,3 +20,9 @@ class CvTailoringRequest(BaseModel):
     tin_tuyen_dung_id: int
     cv_profile: dict | None = None
     jd_profile: dict | None = None
+
+
+class CvBuilderWritingRequest(BaseModel):
+    cv_profile: dict | None = None
+    section: str = "summary"
+    options: dict | None = None

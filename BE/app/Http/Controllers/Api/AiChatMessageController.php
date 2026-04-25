@@ -128,6 +128,12 @@ class AiChatMessageController extends Controller
                     }
                 );
             } catch (\Throwable $e) {
+                $aiClient->recordFallback(
+                    'career_chat_stream',
+                    $e->getMessage(),
+                    ['session_id' => $session->id],
+                    ['fallback_mode' => 'non_stream']
+                );
                 $donePayload = $this->fallbackToNonStream(
                     $aiClient,
                     $session->id,
@@ -228,8 +234,16 @@ class AiChatMessageController extends Controller
                             'ho_ten' => $hoSo->nguoiDung?->ho_ten,
                             'parsed_name' => $hoSo->parsing?->parsed_name,
                             'tieu_de_ho_so' => $hoSo->tieu_de_ho_so,
+                            'vi_tri_ung_tuyen_muc_tieu' => $hoSo->vi_tri_ung_tuyen_muc_tieu,
+                            'ten_nganh_nghe_muc_tieu' => $hoSo->ten_nganh_nghe_muc_tieu,
                             'kinh_nghiem_nam' => $hoSo->kinh_nghiem_nam,
                             'trinh_do' => $hoSo->trinh_do,
+                            'muc_tieu_nghe_nghiep' => $hoSo->muc_tieu_nghe_nghiep,
+                            'builder_skills' => collect($hoSo->ky_nang_json ?? [])
+                                ->map(fn ($item) => is_array($item) ? ($item['ten'] ?? $item['name'] ?? $item['skill_name'] ?? null) : $item)
+                                ->filter()
+                                ->values()
+                                ->all(),
                             'parsed_skills' => collect($hoSo->parsing?->parsed_skills_json ?? [])
                                 ->map(fn ($item) => is_array($item) ? ($item['skill_name'] ?? null) : $item)
                                 ->filter()
